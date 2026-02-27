@@ -47,6 +47,7 @@
             // 
             // tabControl1
             // 
+            tabControl1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             tabControl1.Controls.Add(tabPage1);
             tabControl1.Controls.Add(tabPage2);
             tabControl1.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
@@ -71,6 +72,7 @@
             // 
             // btnCreateTicket
             // 
+            btnCreateTicket.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             btnCreateTicket.BackColor = Color.Gold;
             btnCreateTicket.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
             btnCreateTicket.ForeColor = SystemColors.ControlText;
@@ -83,6 +85,7 @@
             // 
             // btnAddRow
             // 
+            btnAddRow.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             btnAddRow.BackColor = Color.Honeydew;
             btnAddRow.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             btnAddRow.Location = new Point(6, 451);
@@ -94,6 +97,7 @@
             // 
             // dgvCreateTickets
             // 
+            dgvCreateTickets.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dgvCreateTickets.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvCreateTickets.Location = new Point(6, 6);
             dgvCreateTickets.Name = "dgvCreateTickets";
@@ -115,6 +119,7 @@
             // 
             // dgvTickets
             // 
+            dgvTickets.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dgvTickets.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvTickets.Location = new Point(6, 35);
             dgvTickets.Name = "dgvTickets";
@@ -147,7 +152,7 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue";
+            Text = "Ghi Issue - v1.2";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();

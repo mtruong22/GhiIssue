@@ -19,13 +19,16 @@ namespace GhiIssue
         private string OMICRM_TOKEN = "";
         private string tokenFilePath = Path.Combine(Application.StartupPath, "token.txt");
         private string draftFilePath = Path.Combine(Application.StartupPath, "draft.json");
+        private string titlesCachePath = Path.Combine(Application.StartupPath, "titles_cache.json");
+        private string catsCachePath = Path.Combine(Application.StartupPath, "cats_cache.json");
+        private string tagsCachePath = Path.Combine(Application.StartupPath, "tags_cache.json");
         private string loginEmailCached = "";
 
         private List<Employee> employees;
         private List<CategoryItem> categoryList = new List<CategoryItem>();
         private List<TagItem> tagList = new List<TagItem>();
 
-        private BindingList<PredefinedTitle> defaultTitles;
+        private BindingList<PredefinedTitle> defaultTitles = new BindingList<PredefinedTitle>();
 
         private string defaultAssigneeId = "";
         private HashSet<string> recentlyClosedTicketIds = new HashSet<string>();
@@ -36,7 +39,7 @@ namespace GhiIssue
 
         public Form1()
         {
-            this.Text = "Ghi Issue v2.0";
+            this.Text = "Ghi Issue v2.1";
 
             if (!Directory.Exists(Application.StartupPath)) Directory.CreateDirectory(Application.StartupPath);
 
@@ -100,7 +103,7 @@ namespace GhiIssue
 
             if (dgvTickets != null)
             {
-                // FIX LỖI: Bật mỏ neo để ép bảng Đóng Issue tự co giãn bám sát viền Form
+                // Bật mỏ neo để ép bảng Đóng Issue tự co giãn bám sát viền Form
                 dgvTickets.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
                 // Kích hoạt đếm dòng
@@ -121,7 +124,6 @@ namespace GhiIssue
         // =========================================================================
         private void HookStatusStrip()
         {
-            // Thuật toán tìm kiếm tất cả StatusStrip trên form (kể cả bị giấu trong TabControl)
             IEnumerable<StatusStrip> FindStatusStrips(Control parent)
             {
                 foreach (Control c in parent.Controls)
@@ -135,7 +137,6 @@ namespace GhiIssue
 
             if (strip != null)
             {
-                // FIX LỖI: Ép thanh StatusStrip thoát khỏi TabControl để hiển thị chung cho toàn Form
                 if (strip.Parent != this)
                 {
                     strip.Parent = this;
@@ -143,20 +144,17 @@ namespace GhiIssue
                     strip.BringToFront();
                 }
 
-                // Tìm bằng Tên (nếu bạn đã đặt tên lblStatusCount)
                 var foundItems = strip.Items.Find("lblStatusCount", true);
                 if (foundItems.Length > 0 && foundItems[0] is ToolStripStatusLabel)
                 {
                     myStatusLabel = (ToolStripStatusLabel)foundItems[0];
                 }
-                // Dự phòng: Nếu quên đặt tên, cứ bốc đại cái chữ đầu tiên trên thanh đó
                 else if (strip.Items.Count > 0 && strip.Items[0] is ToolStripStatusLabel fallbackLbl)
                 {
                     myStatusLabel = fallbackLbl;
                 }
             }
 
-            // Mông má lại cho đẹp
             if (myStatusLabel != null)
             {
                 myStatusLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);
@@ -192,7 +190,7 @@ namespace GhiIssue
                     }
                 }
 
-                myStatusLabel.Text = $"📝 Tạo Phiếu: {createTotal} phiếu (Đang chọn: {createSelected})   |   🗂️ Đóng Issue: {ticketTotal} phiếu (Đang chọn: {ticketSelected})";
+                myStatusLabel.Text = $"📝 Tạo Phiếu: {createTotal} dòng (Đang chọn: {createSelected})   |   🗂️ Đóng Issue: {ticketTotal} phiếu (Đang chọn: {ticketSelected})";
             }
             catch { }
         }
@@ -276,6 +274,8 @@ namespace GhiIssue
                                 var row = dgvCreateTickets.Rows[idx];
 
                                 row.Cells["colTitle"].Value = t.name;
+                                row.Cells["colCategory"].Value = "FO_1_POS";
+                                row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
                                 row.Cells["colAssignee"].Value = selectedEmp.Id;
                                 row.Cells["colResult"].Value = "☁️ Đã có trên hệ thống";
 
@@ -411,7 +411,8 @@ namespace GhiIssue
 
             Label lbl1 = new Label() { Left = 20, Top = 20, Text = "Chọn Cột cần đổi:", AutoSize = true };
             ComboBox cbColumn = new ComboBox() { Left = 20, Top = 40, Width = 290, DropDownStyle = ComboBoxStyle.DropDownList };
-            cbColumn.Items.AddRange(new string[] { "Tiêu đề", "Chủ đề", "Phân loại", "Tag", "Người xử lý" });
+            // Đã xóa Chủ đề & Phân loại khỏi Bulk Edit vì đã gán cứng
+            cbColumn.Items.AddRange(new string[] { "Tiêu đề", "Tag", "Người xử lý" });
 
             Label lbl2 = new Label() { Left = 20, Top = 80, Text = "Chọn Giá trị mới:", AutoSize = true };
             ComboBox cbValue = new ComboBox() { Left = 20, Top = 100, Width = 290, DropDownStyle = ComboBoxStyle.DropDownList };
@@ -423,16 +424,8 @@ namespace GhiIssue
                 string selCol = cbColumn.SelectedItem.ToString();
 
                 if (selCol == "Tiêu đề") { cbValue.DataSource = defaultTitles; cbValue.DisplayMember = "Title"; cbValue.ValueMember = "Title"; }
-                else if (selCol == "Chủ đề") { cbValue.DataSource = categoryList; cbValue.DisplayMember = "name"; cbValue.ValueMember = "_id"; }
                 else if (selCol == "Tag") { cbValue.DataSource = tagList; cbValue.DisplayMember = "name"; cbValue.ValueMember = "id"; }
                 else if (selCol == "Người xử lý") { cbValue.DataSource = employees; cbValue.DisplayMember = "Name"; cbValue.ValueMember = "Id"; }
-                else if (selCol == "Phân loại")
-                {
-                    string catId = dgvCreateTickets.SelectedRows[0].Cells["colCategory"].Value?.ToString();
-                    var cat = categoryList.FirstOrDefault(c => c._id == catId);
-                    if (cat != null && cat.types != null) { cbValue.DataSource = cat.types.ToList(); cbValue.DisplayMember = "name"; cbValue.ValueMember = "uuid"; }
-                    else { MessageBox.Show("Dòng đầu tiên chưa chọn Chủ đề, không thể load Phân loại!"); }
-                }
             };
             cbColumn.SelectedIndex = 0;
 
@@ -454,11 +447,9 @@ namespace GhiIssue
                         if (selCol == "Tiêu đề")
                         {
                             row.Cells["colTitle"].Value = newVal;
-                            var match = defaultTitles.FirstOrDefault(t => t.Title == newVal.ToString());
+                            var match = defaultTitles.FirstOrDefault(t => t.Title.Equals(newVal.ToString(), StringComparison.OrdinalIgnoreCase));
                             if (match != null) row.Cells["colGroup"].Value = match.Group;
                         }
-                        else if (selCol == "Chủ đề") { row.Cells["colCategory"].Value = newVal; row.Cells["colSubCategory"].Value = null; }
-                        else if (selCol == "Phân loại") { row.Cells["colSubCategory"].Value = newVal; }
                         else if (selCol == "Tag") { row.Cells["colTag"].Value = newVal; }
                         else if (selCol == "Người xử lý") { row.Cells["colAssignee"].Value = newVal; }
                     }
@@ -494,7 +485,12 @@ namespace GhiIssue
 
         private async void Form1_Load(object sender, EventArgs e)
         {
-            LoadDefaultTitles();
+            // BƯỚC 1: LOAD DỮ LIỆU OFFLINE TỪ LẦN TRƯỚC
+            if (File.Exists(titlesCachePath)) { try { defaultTitles = JsonSerializer.Deserialize<BindingList<PredefinedTitle>>(File.ReadAllText(titlesCachePath)); } catch { } }
+            else { LoadDefaultTitlesFallback(); } // Nếu chưa có thì dùng tạm danh sách cứng
+
+            if (File.Exists(catsCachePath)) { try { categoryList = JsonSerializer.Deserialize<List<CategoryItem>>(File.ReadAllText(catsCachePath)); } catch { } }
+            if (File.Exists(tagsCachePath)) { try { tagList = JsonSerializer.Deserialize<List<TagItem>>(File.ReadAllText(tagsCachePath)); } catch { } }
 
             employees = new List<Employee>()
             {
@@ -521,7 +517,6 @@ namespace GhiIssue
                 cboEmployees.DataSource = employees;
                 cboEmployees.AutoCompleteMode = AutoCompleteMode.None;
                 cboEmployees.DropDownStyle = ComboBoxStyle.DropDown;
-                cboEmployees.TextUpdate -= cboEmployees_TextUpdate;
                 cboEmployees.TextUpdate += cboEmployees_TextUpdate;
             }
 
@@ -530,132 +525,189 @@ namespace GhiIssue
             await PerformLoginSequenceAsync();
 
             AutoAssignFromEmail(loginEmailCached);
-
-            // GỌI HÀM HOOK THANH TRẠNG THÁI (Đã vá lỗi ở đây)
             HookStatusStrip();
-
             LoadDraft();
+
+            if (dgvCreateTickets.Rows.Count <= 1) btnAddRow_Click(null, null);
+
+            // BƯỚC 2: CHẠY NGẦM BACKGROUND ĐỂ TẢI SHEET & API TAG
+            _ = Task.Run(async () => {
+                await SyncTitlesBackgroundAsync();
+                if (!string.IsNullOrEmpty(OMICRM_TOKEN))
+                {
+                    await SyncCategoriesBackgroundAsync();
+                    await SyncTagsBackgroundAsync();
+                }
+            });
         }
 
-        private void LoadDefaultTitles()
+        private void LoadDefaultTitlesFallback()
         {
-            defaultTitles = new BindingList<PredefinedTitle>
-            {
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Phần mềm POS không vào được do services không chạy" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Phần mềm POS bị treo do hệ thống" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Phần mềm POS không vào được do hết hạn license" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Phần mềm POS không in được do hạ tầng mạng" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Cài lại phần mềm POS cho khách hàng" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Phần mềm POS ngắt kết nối do bật 2 phần mềm Doshcash" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Không Đồng bộ master data POS" },
-                new PredefinedTitle { Group = "Phần mềm POS", Title = "Phần mềm POS treo tạm tính không in được do bug hệ thống" },
-
-                new PredefinedTitle { Group = "RK7 MANAGER", Title = "Phần mềm Rk7 Manager không vào được do Services không chạy" },
-                new PredefinedTitle { Group = "RK7 MANAGER", Title = "Phần mềm Rk7 Manager không vào được do hệ thống máy chủ" },
-                new PredefinedTitle { Group = "RK7 MANAGER", Title = "Phần mềm Rk7 Manager không vào xem báo cáo được do Services không chạy" },
-                new PredefinedTitle { Group = "RK7 MANAGER", Title = "Phần mềm Rk7 Manager không vào được do hết hạn license" },
-                new PredefinedTitle { Group = "RK7 MANAGER", Title = "Cài lại phần mềm RK7 Manager cho khách hàng" },
-
-                new PredefinedTitle { Group = "KDS", Title = "Phần mềm KDS bị treo cần phải khởi động lại KDS Server" },
-                new PredefinedTitle { Group = "KDS", Title = "Phần mềm KDS không vào được do Services không chạy" },
-                new PredefinedTitle { Group = "KDS", Title = "Phần mềm KDS không lên món do hệ thống mạng của khách hàng" },
-                new PredefinedTitle { Group = "KDS", Title = "Phần mềm KDS không vào được do hết hạn license" },
-                new PredefinedTitle { Group = "KDS", Title = "Phần mềm KDS không vào được do sai cấu hình" },
-                new PredefinedTitle { Group = "KDS", Title = "Cài lại phần mềm KDS cho khách hàng" },
-                new PredefinedTitle { Group = "KDS", Title = "Thay đổi cấu hình phần mềm KDS theo yêu cầu của khách hàng" },
-
-                new PredefinedTitle { Group = "SkyTab", Title = "Phần mềm SkyTab bị treo cần phải khởi động lại App Server" },
-                new PredefinedTitle { Group = "SkyTab", Title = "Phần mềm SkyTab không vào được do Services không chạy" },
-                new PredefinedTitle { Group = "SkyTab", Title = "Phần mềm SkyTab không vào được do hệ thống mạng của khách hàng" },
-                new PredefinedTitle { Group = "SkyTab", Title = "Phần mềm SkyTab không vào được do hết hạn license XML" },
-                new PredefinedTitle { Group = "SkyTab", Title = "Cài lại phần mềm SkyTab cho khách hàng" },
-                new PredefinedTitle { Group = "SkyTab", Title = "Thay đổi cấu hình phần mềm SkyTab theo yêu cầu của khách hàng" },
-
-                new PredefinedTitle { Group = "SkyMenu", Title = "Phần mềm SkyMenu bị treo cần phải khởi động lại App Server" },
-                new PredefinedTitle { Group = "SkyMenu", Title = "Phần mềm SkyMenu không vào được do Services không chạy" },
-                new PredefinedTitle { Group = "SkyMenu", Title = "Phần mềm SkyMenu không vào được do hệ thống mạng của khách hàng" },
-                new PredefinedTitle { Group = "SkyMenu", Title = "Phần mềm SkyMenu không vào được do hết hạn license XML" },
-                new PredefinedTitle { Group = "SkyMenu", Title = "Cài lại phần mềm SkyMenu cho khách hàng" },
-                new PredefinedTitle { Group = "SkyMenu", Title = "Thay đổi cấu hình phần mềm SkyMenu theo yêu cầu của khách hàng" },
-
-                new PredefinedTitle { Group = "SkyOrder", Title = "Phần mềm SkyOrder bị treo cần phải khởi động lại App Server" },
-                new PredefinedTitle { Group = "SkyOrder", Title = "Phần mềm SkyOrder không vào được do Services không chạy" },
-                new PredefinedTitle { Group = "SkyOrder", Title = "Phần mềm SkyOrder không vào được do hệ thống mạng của khách hàng" },
-                new PredefinedTitle { Group = "SkyOrder", Title = "Phần mềm SkyOrder không vào được do hết hạn license XML" },
-                new PredefinedTitle { Group = "SkyOrder", Title = "Cài lại phần mềm SkyOrder cho khách hàng" },
-                new PredefinedTitle { Group = "SkyOrder", Title = "Thay đổi cấu hình phần mềm SkyOrder theo yêu cầu của khách hàng" },
-
-                new PredefinedTitle { Group = "SkyGuestScreen", Title = "Màn hình 02 không hiển thị món do Services không chạy" },
-                new PredefinedTitle { Group = "SkyGuestScreen", Title = "Màn hình 02 bị treo cần khởi động lại Services" },
-                new PredefinedTitle { Group = "SkyGuestScreen", Title = "Màn hình 02 hiện sai hình ảnh" },
-                new PredefinedTitle { Group = "SkyGuestScreen", Title = "Thay đổi cấu hình phần mềm SkyGuestScreen theo yêu cầu của khách hàng" },
-
-                new PredefinedTitle { Group = "OM", Title = "OM bị mất kết nối với máy chủ" },
-                new PredefinedTitle { Group = "OM", Title = "OM không xác nhận được đơn do đã có đơn tồn tại trên POS" },
-                new PredefinedTitle { Group = "OM", Title = "OM hủy đơn do Agent bị treo" },
-                new PredefinedTitle { Group = "OM", Title = "OM hủy đơn do Agent không chạy" },
-                new PredefinedTitle { Group = "OM", Title = "OM bị hủy đơn do áp dụng sai coupon, sai giá tiền" },
-                new PredefinedTitle { Group = "OM", Title = "OM hủy đơn do masterdata sai" },
-
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hệ thống thanh toán Momo bị treo" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hệ thống thanh toán Napas bị treo" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hệ thống thanh toán ZaloPay bị treo" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hệ thống thanh toán VietQR bị treo" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hệ thống thanh toán Payoo bị treo" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hỗ trợ thanh toán VietQR thủ công" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hỗ trợ thanh toán Payoo thủ công" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hỗ trợ thanh toán Zalo thủ công" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hỗ trợ thanh toán Napas thủ công" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Hỗ trợ thanh toán Momo thủ công" },
-                new PredefinedTitle { Group = "Payment Hub", Title = "Server Payment Hub gặp sự cố" },
-
-                new PredefinedTitle { Group = "CRM", Title = "CRM không tích điểm được do Services Farcard bị treo" },
-                new PredefinedTitle { Group = "CRM", Title = "CRM không tích điểm được do Services Farcard bị stop" },
-                new PredefinedTitle { Group = "CRM", Title = "CRM bị treo không giảm giá được do máy chủ" },
-                new PredefinedTitle { Group = "CRM", Title = "CRM không sử dụng được hết hạn license" },
-
-                new PredefinedTitle { Group = "SkyInvoice", Title = "SkyInvoice bị thiếu bill từ POS đẩy lên" },
-                new PredefinedTitle { Group = "SkyInvoice", Title = "SkyInvoice bị treo do hệ thống máy chủ." },
-                new PredefinedTitle { Group = "SkyInvoice", Title = "SkyInvoice bị treo do hệ thống mạng của khách hàng." },
-                new PredefinedTitle { Group = "SkyInvoice", Title = "Chỉnh lại mẫu hóa đơn trên phần mềm SkyInvoice" },
-
-                new PredefinedTitle { Group = "Phần mềm Kho", Title = "Phần mềm kho không vào được" },
-                new PredefinedTitle { Group = "Phần mềm Kho", Title = "Phần mềm kho trừ hàng sai" },
-
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Bổ sung báo cáo mới theo yêu cầu của khách hàng trên IR REPORT" },
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Bổ sung thêm trường dữ liệu trên báo cáo IR REPORT cho khách hàng" },
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Hỗ trợ báo cáo bị sai lệch dữ liệu trên IR Report" },
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Báo cáo IR bị thiếu dữ liệu từ nhà hàng đổ về" },
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Bổ sung báo cáo mới theo yêu cầu của khách hàng trên POS" },
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Bổ sung thêm trường dữ liệu trên báo cáo POS cho khách hàng" },
-                new PredefinedTitle { Group = "BÁO CÁO", Title = "Hỗ trợ báo cáo bị sai lệch dữ liệu trên POS" },
-
-                new PredefinedTitle { Group = "MASTER DATA", Title = "Setup Master Data khách hàng gửi" },
-                new PredefinedTitle { Group = "MASTER DATA", Title = "Hỗ trợ đồng bộ Master Data" },
-                new PredefinedTitle { Group = "MASTER DATA", Title = "Hỗ trợ Master Data bị setup sai, thiếu" },
-
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Máy POS không lên do hư nguồn" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Máy POS bị hư màn hình cảm ứng" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Máy POS hư ổ cứng" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Máy in không lên do hư nguồn" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Máy in bị lỗi dao cắt" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Máy in thanh nhiệt bị mờ mực in" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Két tiền bị hư chìa khóa" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Két tiền bị mất chìa khóa" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Két tiền bị kẹt giấy" },
-                new PredefinedTitle { Group = "PHẦN CỨNG", Title = "Két tiền không tự động bật ra khi tính tiền" },
-
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn khách hàng thao tác trên hệ thống POS" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn khách hàng thao tác trên phần mềm Kho" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn khách hàng thao tác trên phần mềm RK7 Manager" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn nhà hàng thanh toán thủ công" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn nhà hàng đóng ca chung (DayEnd)" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn nhà hàng cấu hình đăng nhập Skytab" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hướng dẫn nhà hàng mở màn hình 02" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hỗ trợ hủy bill" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hỗ trợ phục hồi bill" },
-                new PredefinedTitle { Group = "Thao tác Vận Hành", Title = "Hỗ trợ hủy tạm tính" }
+            defaultTitles = new BindingList<PredefinedTitle> {
+                new PredefinedTitle { Group = "Offline Backup", Title = "Mất mạng - Hãy kiểm tra lại kết nối" }
             };
+        }
+
+        private async Task SyncTitlesBackgroundAsync()
+        {
+            string sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRGeOsJ71sqpI__BcxboJTp-SvETPWY4-H21rs2mnTQb_K1LRSJJaAkBIP8TyGjgdidcF47gH_lCfUJ/pub?gid=1073183768&single=true&output=tsv";
+            try
+            {
+                using (HttpClient client = new HttpClient())
+                {
+                    string tsvData = await client.GetStringAsync(sheetUrl);
+                    string[] lines = tsvData.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    var freshList = new BindingList<PredefinedTitle>();
+                    string lastGroup = "Khác (Nhập tay)";
+
+                    for (int i = 1; i < lines.Length; i++)
+                    {
+                        string[] cols = lines[i].Split('\t');
+                        if (cols.Length >= 2)
+                        {
+                            string groupName = cols[0].Trim();
+                            string titleName = cols[1].Trim();
+                            if (!string.IsNullOrEmpty(groupName)) lastGroup = groupName; else groupName = lastGroup;
+                            if (!string.IsNullOrEmpty(titleName)) freshList.Add(new PredefinedTitle { Group = groupName, Title = titleName });
+                        }
+                    }
+
+                    if (freshList.Count > 0)
+                    {
+                        File.WriteAllText(titlesCachePath, JsonSerializer.Serialize(freshList));
+                        this.Invoke(new Action(() => {
+                            defaultTitles = freshList;
+
+                            // FIX LỖI BỊ "MÙ" Ô TIÊU ĐỀ: Báo cho cái cột biết là danh sách đã có bản mới!
+                            if (dgvCreateTickets != null && dgvCreateTickets.Columns.Contains("colTitle"))
+                            {
+                                var col = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colTitle"];
+                                col.DataSource = defaultTitles;
+                            }
+                        }));
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private async Task SyncCategoriesBackgroundAsync()
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+                try
+                {
+                    HttpResponseMessage response = await client.GetAsync("https://ticket-v2-stg.omicrm.com/ticket/category/get-all?lng=vi&utm_source=web");
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string json = await response.Content.ReadAsStringAsync();
+                        CategoryResponse catData = JsonSerializer.Deserialize<CategoryResponse>(json);
+                        if (catData?.payload != null && catData.payload.Count > 0)
+                        {
+                            var freshList = catData.payload.Where(c => !string.IsNullOrEmpty(c.name) && c.types != null && c.types.Count > 0).ToList();
+                            File.WriteAllText(catsCachePath, JsonSerializer.Serialize(freshList));
+                            this.Invoke(new Action(() => { categoryList = freshList; }));
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private async Task SyncTagsBackgroundAsync()
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+                try
+                {
+                    var freshList = new List<TagItem>();
+                    int currentPage = 1; int pageSize = 1000; bool hasMoreData = true;
+
+                    while (hasMoreData)
+                    {
+                        var body = new { size = pageSize, page = currentPage };
+                        var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+                        HttpResponseMessage response = await client.PostAsync("https://tenant-config-stg.omicrm.com/tag/search-all?lng=vi&utm_source=web", content);
+
+                        if (!response.IsSuccessStatusCode) response = await client.GetAsync($"https://tenant-config-stg.omicrm.com/tag/search-all?lng=vi&utm_source=web&size={pageSize}&page={currentPage}");
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            string json = await response.Content.ReadAsStringAsync();
+                            TagResponse tagData = JsonSerializer.Deserialize<TagResponse>(json);
+                            if (tagData?.payload?.items != null && tagData.payload.items.Count > 0) { freshList.AddRange(tagData.payload.items); currentPage++; }
+                            else hasMoreData = false;
+                        }
+                        else hasMoreData = false;
+                    }
+
+                    if (freshList.Count > 0)
+                    {
+                        File.WriteAllText(tagsCachePath, JsonSerializer.Serialize(freshList));
+                        this.Invoke(new Action(() => {
+                            tagList = freshList;
+                            if (dgvCreateTickets != null && dgvCreateTickets.Columns.Contains("colTag"))
+                                ((DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colTag"]).DataSource = tagList;
+                        }));
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // =========================================================================
+        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V2.1 FIX LỖI MERGED CELL)
+        // =========================================================================
+        private async Task LoadDefaultTitlesAsync()
+        {
+            defaultTitles = new BindingList<PredefinedTitle>();
+            string sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRGeOsJ71sqpI__BcxboJTp-SvETPWY4-H21rs2mnTQb_K1LRSJJaAkBIP8TyGjgdidcF47gH_lCfUJ/pub?gid=1073183768&single=true&output=tsv";
+
+            try
+            {
+                using (HttpClient client = new HttpClient())
+                {
+                    string tsvData = await client.GetStringAsync(sheetUrl);
+                    string[] lines = tsvData.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+                    string lastGroup = "Khác (Nhập tay)"; // Tên nhóm dự phòng ban đầu
+
+                    for (int i = 1; i < lines.Length; i++)
+                    {
+                        string[] cols = lines[i].Split('\t');
+                        if (cols.Length >= 2)
+                        {
+                            string groupName = cols[0].Trim();
+                            string titleName = cols[1].Trim();
+
+                            // Tự động lấy tên Nhóm của ô phía trên nếu ô hiện tại bị trống/gộp
+                            if (!string.IsNullOrEmpty(groupName))
+                            {
+                                lastGroup = groupName;
+                            }
+                            else
+                            {
+                                groupName = lastGroup;
+                            }
+
+                            if (!string.IsNullOrEmpty(titleName))
+                            {
+                                defaultTitles.Add(new PredefinedTitle { Group = groupName, Title = titleName });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Không thể tải Tiêu đề từ Google Sheet. Tạm thời sử dụng danh sách offline.\nLỗi: " + ex.Message, "Cảnh báo Mạng", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                defaultTitles = new BindingList<PredefinedTitle>
+                {
+                    new PredefinedTitle { Group = "Offline Backup", Title = "Mất mạng - Hãy kiểm tra lại kết nối" }
+                };
+            }
         }
 
         private void AutoAssignFromEmail(string email)
@@ -772,24 +824,14 @@ namespace GhiIssue
                             }
 
                             row.Cells["colTitle"].Value = draft.Title;
-                            var matchedGroup = defaultTitles.FirstOrDefault(t => t.Title == draft.Title);
+                            var matchedGroup = defaultTitles.FirstOrDefault(t => t.Title.Equals(draft.Title, StringComparison.OrdinalIgnoreCase));
                             if (matchedGroup != null) row.Cells["colGroup"].Value = matchedGroup.Group;
 
                             row.Cells["colDesc"].Value = draft.Desc;
-                            row.Cells["colCategory"].Value = draft.CatId;
 
-                            if (!string.IsNullOrEmpty(draft.CatId))
-                            {
-                                var cat = categoryList.FirstOrDefault(c => c._id == draft.CatId);
-                                var cellSubCat = (DataGridViewComboBoxCell)row.Cells["colSubCategory"];
-                                if (cat != null && cat.types != null)
-                                {
-                                    cellSubCat.DataSource = cat.types;
-                                    cellSubCat.DisplayMember = "name";
-                                    cellSubCat.ValueMember = "uuid";
-                                }
-                                row.Cells["colSubCategory"].Value = draft.SubCatId;
-                            }
+                            // Nạp cứng 2 cột không đổi
+                            row.Cells["colCategory"].Value = "FO_1_POS";
+                            row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
 
                             row.Cells["colTag"].Value = draft.TagId;
                             row.Cells["colAssignee"].Value = draft.EmpId;
@@ -804,7 +846,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "2.0";
+            string currentVersion = "2.1"; // NHỚ ĐỔI THÀNH 2.1 ĐỂ TEST AUTO UPDATE NHÉ
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -1064,23 +1106,62 @@ namespace GhiIssue
             return false;
         }
 
+        // FIX LỖI ENTER BỊ MẤT CHỮ KHI GÕ TAY
+        // FIX LỖI "BỊ MÙ" KHÔNG HIỂN THỊ CHỮ KHI CLICK SANG Ô KHÁC
         private void DgvCreateTickets_CellValidating(object sender, DataGridViewCellValidatingEventArgs e)
         {
             if (e.RowIndex < 0) return;
 
-            if (dgvCreateTickets.Columns[e.ColumnIndex].Name == "colTitle")
+            // Bắt lấy ô đang được gõ tay
+            if (dgvCreateTickets.EditingControl is ComboBox cb)
             {
-                string typedText = e.FormattedValue?.ToString()?.Trim();
-                if (!string.IsNullOrEmpty(typedText))
+                string colName = dgvCreateTickets.Columns[e.ColumnIndex].Name;
+                string typedText = cb.Text.Trim();
+
+                if (string.IsNullOrEmpty(typedText)) return;
+
+                if (colName == "colTitle")
                 {
                     if (!defaultTitles.Any(t => t.Title.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
                     {
                         defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
                     }
                 }
+                else if (colName == "colTag")
+                {
+                    if (!tagList.Any(t => t.name.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        tagList.Insert(0, new TagItem { id = typedText, name = typedText });
+
+                        // F5 Lại bộ nhớ cột Tag để nó không bị mù
+                        var col = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colTag"];
+                        col.DataSource = null;
+                        col.DataSource = tagList;
+                        col.DisplayMember = "name";
+                        col.ValueMember = "id";
+                    }
+                }
+                else if (colName == "colAssignee")
+                {
+                    if (!employees.Any(em => em.Name.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        employees.Insert(0, new Employee { Id = typedText, Name = typedText });
+
+                        // F5 Lại bộ nhớ cột Người xử lý để nó không bị mù
+                        var col = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colAssignee"];
+                        col.DataSource = null;
+                        col.DataSource = employees;
+                        col.DisplayMember = "Name";
+                        col.ValueMember = "Id";
+                    }
+                }
+
+                // Chốt hạ: Ép giá trị chết vào cái ô để nó hiện lên luôn
+                dgvCreateTickets.Rows[e.RowIndex].Cells[e.ColumnIndex].Value = typedText;
             }
         }
 
+        // FIX LỖI TỰ NHẢY TÊN THUẬN KHI ENTER
         private void DgvCreateTickets_EditingControlShowing(object sender, DataGridViewEditingControlShowingEventArgs e)
         {
             if (e.Control is ComboBox cb)
@@ -1088,39 +1169,92 @@ namespace GhiIssue
                 cb.DropDownStyle = ComboBoxStyle.DropDown;
                 cb.AutoCompleteMode = AutoCompleteMode.None;
 
+                cb.TextUpdate -= Cb_TextUpdate;
+                cb.KeyDown -= Cb_KeyDown;
+                cb.Validating -= Cb_Validating; // Thêm dò tìm sự kiện khi bấm ra ngoài
+
+                string colName = dgvCreateTickets.CurrentCell.OwningColumn.Name;
+                object cellValue = dgvCreateTickets.CurrentCell.Value;
+
+                if (colName == "colTitle")
+                {
+                    string currentVal = cellValue?.ToString() ?? "";
+                    var cleanList = defaultTitles.Where(t => t.Group != "Khác (Nhập tay)" || t.Title == currentVal).ToList();
+
+                    cb.DataSource = cleanList;
+                    cb.DisplayMember = "Title";
+                    cb.ValueMember = "Title";
+
+                    if (!string.IsNullOrEmpty(currentVal)) cb.Text = currentVal;
+                    else cb.SelectedIndex = -1; // KHÔNG CHỌN MẶC ĐỊNH
+                }
+                else if (colName == "colTag")
+                {
+                    cb.DataSource = tagList.ToList();
+                    cb.DisplayMember = "name";
+                    cb.ValueMember = "id";
+
+                    if (cellValue != null) cb.SelectedValue = cellValue;
+                    else cb.SelectedIndex = -1;
+                }
+                else if (colName == "colAssignee")
+                {
+                    cb.DataSource = employees.ToList();
+                    cb.DisplayMember = "Name";
+                    cb.ValueMember = "Id";
+
+                    if (cellValue != null) cb.SelectedValue = cellValue;
+                    else cb.SelectedIndex = -1;
+                }
+
                 BeginInvoke(new Action(() => {
-                    if (cb.Focused)
+                    if (cb.Focused && !string.IsNullOrEmpty(cb.Text))
                     {
                         cb.SelectionLength = 0;
                         cb.SelectionStart = cb.Text.Length;
                     }
                 }));
 
+                cb.TextUpdate += Cb_TextUpdate;
+                cb.KeyDown += Cb_KeyDown;
+                cb.Validating += Cb_Validating; // Khởi hoạt sự kiện
+            }
+        }
+
+        // HÀM MỚI: Bắt sự kiện khi bấm Enter hoặc click sang ô khác để lưu lại
+        private void Cb_Validating(object sender, CancelEventArgs e)
+        {
+            if (sender is ComboBox cb && dgvCreateTickets.CurrentCell != null)
+            {
+                string typedText = cb.Text.Trim();
+                if (string.IsNullOrEmpty(typedText)) return;
+
                 string colName = dgvCreateTickets.CurrentCell.OwningColumn.Name;
 
                 if (colName == "colTitle")
                 {
-                    string currentVal = dgvCreateTickets.CurrentRow.Cells["colTitle"].Value?.ToString() ?? "";
-                    var cleanList = defaultTitles.Where(t => t.Group != "Khác (Nhập tay)" || t.Title == currentVal).ToList();
-
-                    cb.DataSource = cleanList;
-                    cb.DisplayMember = "Title";
-                    cb.ValueMember = "Title";
+                    if (!defaultTitles.Any(t => t.Title.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // Tuyệt chiêu: Ngắt thông báo để Grid không bị reset chữ
+                        defaultTitles.RaiseListChangedEvents = false;
+                        defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
+                        defaultTitles.RaiseListChangedEvents = true; // Bật lại ngay sau khi chèn xong
+                    }
                 }
-                else if (colName == "colCategory") cb.DataSource = categoryList.ToList();
-                else if (colName == "colTag") cb.DataSource = tagList.ToList();
-                else if (colName == "colAssignee") cb.DataSource = employees.ToList();
-                else if (colName == "colSubCategory")
+                else if (colName == "colTag")
                 {
-                    string catId = dgvCreateTickets.CurrentRow.Cells["colCategory"].Value?.ToString();
-                    var cat = categoryList.FirstOrDefault(c => c._id == catId);
-                    cb.DataSource = (cat != null && cat.types != null) ? cat.types.ToList() : new List<SubCategoryItem>();
+                    if (!tagList.Any(t => t.name.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        tagList.Insert(0, new TagItem { id = typedText, name = typedText });
+                    }
                 }
-
-                cb.TextUpdate -= Cb_TextUpdate;
-                cb.TextUpdate += Cb_TextUpdate;
-                cb.KeyDown -= Cb_KeyDown;
-                cb.KeyDown += Cb_KeyDown;
+                else if (colName == "colAssignee")
+                {
+                    if (!employees.Any(em => em.Name.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        employees.Insert(0, new Employee { Id = typedText, Name = typedText });
+                    }
+                }
             }
         }
 
@@ -1134,7 +1268,7 @@ namespace GhiIssue
             }
         }
 
-        private string ConvertToUnSign(string s)
+        public static string ConvertToUnSignStatic(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
             System.Text.RegularExpressions.Regex regex = new System.Text.RegularExpressions.Regex("\\p{IsCombiningDiacriticalMarks}+");
@@ -1142,6 +1276,10 @@ namespace GhiIssue
             return regex.Replace(temp, String.Empty).Replace('\u0111', 'd').Replace('\u0110', 'D').ToLower();
         }
 
+        private string ConvertToUnSign(string s) => ConvertToUnSignStatic(s);
+
+        // FIX LỖI CRASH KHI TÌM KIẾM KHÔNG CÓ KẾT QUẢ
+        // FIX LỖI KHÔNG LƯU KHI ENTER VÀ CRASH KHI TÌM KIẾM
         private void Cb_TextUpdate(object sender, EventArgs e)
         {
             ComboBox cb = sender as ComboBox;
@@ -1153,34 +1291,69 @@ namespace GhiIssue
             cb.TextUpdate -= Cb_TextUpdate;
             string colName = dgvCreateTickets.CurrentCell.OwningColumn.Name;
 
+            System.Collections.IList dataSource = null;
+
             if (colName == "colTitle")
             {
                 var cleanList = defaultTitles.Where(t => t.Group != "Khác (Nhập tay)").ToList();
-                cb.DataSource = string.IsNullOrEmpty(searchKeyword) ? cleanList : cleanList.Where(x => ConvertToUnSign(x.Title).Contains(searchKeyword)).ToList();
+                var ds = string.IsNullOrEmpty(searchKeyword) ? cleanList : cleanList.Where(x => x.UnsignedTitle.Contains(searchKeyword)).ToList();
+
+                // MẤU CHỐT Ở ĐÂY: Luôn nhét cái chữ bạn đang gõ vào đầu danh sách để khi ấn Enter, WinForms nhận diện đây là dữ liệu hợp lệ và cho phép lưu!
+                if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Title.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
+                {
+                    ds.Insert(0, new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
+                }
+                else if (ds.Count == 0) ds.Add(new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
+
+                cb.DataSource = ds;
+                cb.DisplayMember = "Title";
+                cb.ValueMember = "Title";
+                dataSource = ds;
             }
-            else if (colName == "colCategory") cb.DataSource = string.IsNullOrEmpty(searchKeyword) ? categoryList.ToList() : categoryList.Where(x => ConvertToUnSign(x.name).Contains(searchKeyword)).ToList();
-            else if (colName == "colTag") cb.DataSource = string.IsNullOrEmpty(searchKeyword) ? tagList.ToList() : tagList.Where(x => ConvertToUnSign(x.name).Contains(searchKeyword)).ToList();
-            else if (colName == "colAssignee") cb.DataSource = string.IsNullOrEmpty(searchKeyword) ? employees.ToList() : employees.Where(x => ConvertToUnSign(x.Name).Contains(searchKeyword)).ToList();
-            else if (colName == "colSubCategory")
+            else if (colName == "colTag")
             {
-                string catId = dgvCreateTickets.CurrentRow.Cells["colCategory"].Value?.ToString();
-                var cat = categoryList.FirstOrDefault(c => c._id == catId);
-                if (cat != null && cat.types != null) cb.DataSource = string.IsNullOrEmpty(searchKeyword) ? cat.types.ToList() : cat.types.Where(x => ConvertToUnSign(x.name).Contains(searchKeyword)).ToList();
+                var ds = string.IsNullOrEmpty(searchKeyword) ? tagList.ToList() : tagList.Where(x => x.UnsignedName.Contains(searchKeyword)).ToList();
+
+                // MẤU CHỐT CỦA TAG
+                if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.name.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
+                    ds.Insert(0, new TagItem { name = keyword, id = keyword });
+                else if (ds.Count == 0) ds.Add(new TagItem { name = keyword, id = keyword });
+
+                cb.DataSource = ds; cb.DisplayMember = "name"; cb.ValueMember = "id"; dataSource = ds;
             }
+            else if (colName == "colAssignee")
+            {
+                var ds = string.IsNullOrEmpty(searchKeyword) ? employees.ToList() : employees.Where(x => x.UnsignedName.Contains(searchKeyword)).ToList();
+
+                // MẤU CHỐT CỦA NGƯỜI XỬ LÝ
+                if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Name.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
+                    ds.Insert(0, new Employee { Name = keyword, Id = keyword });
+                else if (ds.Count == 0) ds.Add(new Employee { Name = keyword, Id = keyword });
+
+                cb.DataSource = ds; cb.DisplayMember = "Name"; cb.ValueMember = "Id"; dataSource = ds;
+            }
+
+            if (dataSource != null && dataSource.Count > 0)
+            {
+                // Chỉ thả danh sách xuống nếu có nhiều lựa chọn hoặc 1 lựa chọn khác với chữ đang gõ
+                cb.DroppedDown = dataSource.Count > 1 || (dataSource.Count == 1 && dataSource[0].ToString() != keyword);
+            }
+            else cb.DroppedDown = false;
 
             cb.Text = keyword;
             cb.SelectionStart = keyword.Length;
-            cb.DroppedDown = true;
             cb.TextUpdate += Cb_TextUpdate;
             Cursor.Current = Cursors.Default;
         }
 
+        // FIX UPDATE NHÓM NGAY LẬP TỨC: Báo cho bảng biết là ô Tiêu đề vừa đổi chữ
         private void DgvCreateTickets_CurrentCellDirtyStateChanged(object sender, EventArgs e)
         {
             if (dgvCreateTickets.IsCurrentCellDirty)
             {
                 string colName = dgvCreateTickets.CurrentCell?.OwningColumn?.Name;
-                if (colName == "colCategory" || colName == "colSubCategory" || colName == "colAssignee" || colName == "colTag")
+
+                if (colName == "colAssignee" || colName == "colTag")
                 {
                     dgvCreateTickets.CommitEdit(DataGridViewDataErrorContexts.Commit);
                 }
@@ -1196,8 +1369,8 @@ namespace GhiIssue
 
             if (colName == "colTitle")
             {
-                string selectedTitle = currentRow.Cells["colTitle"].Value?.ToString();
-                var matched = defaultTitles.FirstOrDefault(t => t.Title == selectedTitle);
+                string selectedTitle = currentRow.Cells["colTitle"].Value?.ToString() ?? "";
+                var matched = defaultTitles.FirstOrDefault(t => t.Title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase));
 
                 dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
                 if (matched != null && matched.Group != "Khác (Nhập tay)")
@@ -1211,29 +1384,13 @@ namespace GhiIssue
                 dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
             }
 
-            if (colName == "colCategory")
-            {
-                string selectedCatId = currentRow.Cells["colCategory"].Value?.ToString();
-                var cellSubCat = (DataGridViewComboBoxCell)currentRow.Cells["colSubCategory"];
-                var cat = categoryList.FirstOrDefault(c => c._id == selectedCatId);
-                if (cat != null && cat.types != null)
-                {
-                    cellSubCat.DataSource = cat.types.ToList();
-                    cellSubCat.DisplayMember = "name";
-                    cellSubCat.ValueMember = "uuid";
-                }
-                else { cellSubCat.DataSource = new List<SubCategoryItem>(); }
-            }
-
-            if (colName == "colCategory" || colName == "colSubCategory" || colName == "colAssignee")
+            if (colName == "colAssignee")
             {
                 var cellValue = currentRow.Cells[colName].Value;
                 if (cellValue == null) return;
 
                 string valueToCopy = cellValue.ToString();
-                string currentCatId = currentRow.Cells["colCategory"].Value?.ToString();
-
-                if (colName == "colAssignee") defaultAssigneeId = valueToCopy;
+                defaultAssigneeId = valueToCopy;
 
                 dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
 
@@ -1243,34 +1400,7 @@ namespace GhiIssue
                     {
                         var targetRow = dgvCreateTickets.Rows[i];
                         if (targetRow.IsNewRow) continue;
-
-                        if (colName == "colCategory")
-                        {
-                            targetRow.Cells["colCategory"].Value = valueToCopy;
-
-                            var targetCellSubCat = (DataGridViewComboBoxCell)targetRow.Cells["colSubCategory"];
-                            var cat = categoryList.FirstOrDefault(c => c._id == valueToCopy);
-                            if (cat != null && cat.types != null)
-                            {
-                                targetCellSubCat.DataSource = cat.types.ToList();
-                                targetCellSubCat.DisplayMember = "name";
-                                targetCellSubCat.ValueMember = "uuid";
-                            }
-                            else { targetCellSubCat.DataSource = new List<SubCategoryItem>(); }
-
-                            targetRow.Cells["colSubCategory"].Value = null;
-                        }
-                        else if (colName == "colSubCategory")
-                        {
-                            if (targetRow.Cells["colCategory"].Value?.ToString() == currentCatId)
-                            {
-                                targetRow.Cells["colSubCategory"].Value = valueToCopy;
-                            }
-                        }
-                        else if (colName == "colAssignee")
-                        {
-                            targetRow.Cells["colAssignee"].Value = valueToCopy;
-                        }
+                        targetRow.Cells["colAssignee"].Value = valueToCopy;
                     }
                 }
                 finally
@@ -1280,8 +1410,11 @@ namespace GhiIssue
             }
         }
 
-        private void DgvCreateTickets_DataError(object sender, DataGridViewDataErrorEventArgs e) { e.ThrowException = false; }
-
+        private void DgvCreateTickets_DataError(object sender, DataGridViewDataErrorEventArgs e)
+        {
+            e.ThrowException = false;
+            e.Cancel = false; // Lệnh tối thượng ép Grid không được khóa chết ô
+        }
         private async Task LoadCategoriesAsync()
         {
             using (HttpClient client = new HttpClient())
@@ -1297,11 +1430,6 @@ namespace GhiIssue
                         if (catData?.payload != null)
                         {
                             categoryList = catData.payload.Where(c => !string.IsNullOrEmpty(c.name) && c.types != null && c.types.Count > 0).ToList();
-                            if (dgvCreateTickets != null && dgvCreateTickets.Columns.Contains("colCategory"))
-                            {
-                                var col = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colCategory"];
-                                col.DataSource = categoryList;
-                            }
                         }
                     }
                 }
@@ -1356,6 +1484,7 @@ namespace GhiIssue
             }
         }
 
+        // ĐÃ SỬA CỘT CHỦ ĐỀ & PHÂN LOẠI THÀNH READ ONLY
         private void SetupCreateTicketGrid()
         {
             if (dgvCreateTickets == null) return;
@@ -1400,20 +1529,25 @@ namespace GhiIssue
 
             dgvCreateTickets.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Mô tả chi tiết", Name = "colDesc", FillWeight = 15 });
 
-            DataGridViewComboBoxColumn colCategory = new DataGridViewComboBoxColumn();
-            colCategory.HeaderText = "Chủ đề";
+            // KHÓA CỨNG: CHỦ ĐỀ
+            // ẨN CỘT: CHỦ ĐỀ & PHÂN LOẠI (Vẫn tồn tại để gửi API)
+            DataGridViewTextBoxColumn colCategory = new DataGridViewTextBoxColumn();
+            //colCategory.HeaderText = "Chủ đề";
             colCategory.Name = "colCategory";
-            colCategory.DisplayMember = "name";
-            colCategory.ValueMember = "_id";
-            colCategory.FillWeight = 10;
+            //colCategory.ReadOnly = true;
+            //colCategory.DefaultCellStyle.BackColor = Color.LightGray;
+            //colCategory.FillWeight = 10;
+            colCategory.Visible = false;
             dgvCreateTickets.Columns.Add(colCategory);
 
-            DataGridViewComboBoxColumn colSubCategory = new DataGridViewComboBoxColumn();
-            colSubCategory.HeaderText = "Phân loại";
+            // KHÓA CỨNG: PHÂN LOẠI
+            DataGridViewTextBoxColumn colSubCategory = new DataGridViewTextBoxColumn();
+            //colSubCategory.HeaderText = "Phân loại";
             colSubCategory.Name = "colSubCategory";
-            colSubCategory.DisplayMember = "name";
-            colSubCategory.ValueMember = "uuid";
-            colSubCategory.FillWeight = 15;
+            //colSubCategory.ReadOnly = true;
+            //colSubCategory.DefaultCellStyle.BackColor = Color.LightGray;
+            //colSubCategory.FillWeight = 15;
+            colSubCategory.Visible = false;
             dgvCreateTickets.Columns.Add(colSubCategory);
 
             DataGridViewComboBoxColumn colTag = new DataGridViewComboBoxColumn();
@@ -1421,7 +1555,7 @@ namespace GhiIssue
             colTag.Name = "colTag";
             colTag.DisplayMember = "name";
             colTag.ValueMember = "id";
-            colTag.FillWeight = 15;
+            colTag.FillWeight = 20;
             dgvCreateTickets.Columns.Add(colTag);
 
             DataGridViewComboBoxColumn colAssignee = new DataGridViewComboBoxColumn();
@@ -1439,6 +1573,17 @@ namespace GhiIssue
             colResult.ReadOnly = true;
             colResult.FillWeight = 10;
             dgvCreateTickets.Columns.Add(colResult);
+            dgvCreateTickets.DefaultValuesNeeded += DgvCreateTickets_DefaultValuesNeeded;
+        }
+
+        private void DgvCreateTickets_DefaultValuesNeeded(object sender, DataGridViewRowEventArgs e)
+        {
+            e.Row.Cells["colCategory"].Value = "FO_1_POS";
+            e.Row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
+            if (!string.IsNullOrEmpty(defaultAssigneeId))
+            {
+                e.Row.Cells["colAssignee"].Value = defaultAssigneeId;
+            }
         }
 
         private void DgvCreateTickets_KeyDown(object sender, KeyEventArgs e)
@@ -1557,31 +1702,6 @@ namespace GhiIssue
                             }
                         }
                         else if (colName == "colDesc") targetCell.Value = cellText;
-                        else if (colName == "colCategory")
-                        {
-                            var match = categoryList.FirstOrDefault(c => c.name.Equals(cellText, StringComparison.OrdinalIgnoreCase));
-                            if (match != null)
-                            {
-                                targetCell.Value = match._id;
-                                var cellSubCat = (DataGridViewComboBoxCell)dgvCreateTickets.Rows[startRow].Cells["colSubCategory"];
-                                if (match.types != null)
-                                {
-                                    cellSubCat.DataSource = match.types.ToList();
-                                    cellSubCat.DisplayMember = "name";
-                                    cellSubCat.ValueMember = "uuid";
-                                }
-                            }
-                        }
-                        else if (colName == "colSubCategory")
-                        {
-                            string currentCatId = dgvCreateTickets.Rows[startRow].Cells["colCategory"].Value?.ToString();
-                            var parentCat = categoryList.FirstOrDefault(c => c._id == currentCatId);
-                            if (parentCat != null && parentCat.types != null)
-                            {
-                                var match = parentCat.types.FirstOrDefault(t => t.name.Equals(cellText, StringComparison.OrdinalIgnoreCase));
-                                if (match != null) targetCell.Value = match.uuid;
-                            }
-                        }
                         else if (colName == "colTag")
                         {
                             var match = tagList.FirstOrDefault(t => t.name.Equals(cellText, StringComparison.OrdinalIgnoreCase));
@@ -1613,17 +1733,6 @@ namespace GhiIssue
 
                 try
                 {
-                    int lastValidRowIndex = oldRowCount - 2;
-                    string lastCat = "";
-                    string lastSubCat = "";
-
-                    if (lastValidRowIndex >= 0)
-                    {
-                        var sourceRow = dgvCreateTickets.Rows[lastValidRowIndex];
-                        lastCat = sourceRow.Cells["colCategory"].Value?.ToString() ?? "";
-                        lastSubCat = sourceRow.Cells["colSubCategory"].Value?.ToString() ?? "";
-                    }
-
                     for (int i = oldRowCount - 1; i < dgvCreateTickets.Rows.Count; i++)
                     {
                         var targetRow = dgvCreateTickets.Rows[i];
@@ -1631,21 +1740,9 @@ namespace GhiIssue
 
                         if (!string.IsNullOrEmpty(defaultAssigneeId)) targetRow.Cells["colAssignee"].Value = defaultAssigneeId;
 
-                        if (!string.IsNullOrEmpty(lastCat))
-                        {
-                            targetRow.Cells["colCategory"].Value = lastCat;
-                            var targetCellSubCat = (DataGridViewComboBoxCell)targetRow.Cells["colSubCategory"];
-                            var cat = categoryList.FirstOrDefault(c => c._id == lastCat);
-                            if (cat != null && cat.types != null)
-                            {
-                                targetCellSubCat.DataSource = cat.types.ToList();
-                                targetCellSubCat.DisplayMember = "name";
-                                targetCellSubCat.ValueMember = "uuid";
-                            }
-                            else { targetCellSubCat.DataSource = new List<SubCategoryItem>(); }
-
-                            if (!string.IsNullOrEmpty(lastSubCat)) targetRow.Cells["colSubCategory"].Value = lastSubCat;
-                        }
+                        // ÉP CỨNG DỮ LIỆU
+                        targetRow.Cells["colCategory"].Value = "FO_1_POS";
+                        targetRow.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
                     }
                 }
                 finally
@@ -1676,17 +1773,22 @@ namespace GhiIssue
                     {
                         string title = row.Cells["colTitle"].Value?.ToString() ?? "";
                         string desc = row.Cells["colDesc"].Value?.ToString() ?? "";
-                        string catId = row.Cells["colCategory"].Value?.ToString() ?? "";
-                        string subCatId = row.Cells["colSubCategory"].Value?.ToString() ?? "";
+
+                        // Lấy text đang hiển thị
+                        string catName = row.Cells["colCategory"].Value?.ToString() ?? "";
+                        string subCatName = row.Cells["colSubCategory"].Value?.ToString() ?? "";
                         string tagId = row.Cells["colTag"].Value?.ToString() ?? "";
                         string empId = row.Cells["colAssignee"].Value?.ToString() ?? "";
 
-                        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(catId)) continue;
+                        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(catName)) continue;
 
                         row.Cells["colResult"].Value = "⏳ Đang gửi...";
 
-                        var catInfo = categoryList.FirstOrDefault(c => c._id == catId);
-                        var subCatInfo = catInfo?.types?.FirstOrDefault(t => t.uuid == subCatId);
+                        // ÂM THẦM DÒ TÌM ID CỦA "FO_1_POS" VÀ "POS_Lỗi kết nối"
+                        var catInfo = categoryList.FirstOrDefault(c => c.name == catName);
+                        string realCatId = catInfo?._id ?? "";
+
+                        var subCatInfo = catInfo?.types?.FirstOrDefault(t => t.name == subCatName);
                         int typeIndex = subCatInfo != null ? subCatInfo.index : 0;
 
                         string finalTag = string.IsNullOrEmpty(tagId) ? null : tagId;
@@ -1696,8 +1798,8 @@ namespace GhiIssue
                         {
                             name = title,
                             description = string.IsNullOrEmpty(desc) ? "" : $"<div style=\"font-size: 15px;\">{desc}</div>",
-                            category_id = catId,
-                            current_type = typeIndex,
+                            category_id = realCatId, // ĐẨY ID LÊN API
+                            current_type = typeIndex, // ĐẨY INDEX LÊN API
                             assignee_contact_ids = string.IsNullOrEmpty(finalEmp) ? new string[] { } : new[] { finalEmp },
                             tags = string.IsNullOrEmpty(finalTag) ? new string[] { } : new[] { finalTag },
                             source = "crud",
@@ -1897,6 +1999,12 @@ namespace GhiIssue
     {
         public string Group { get; set; }
         public string Title { get; set; }
+
+        public override string ToString() { return Title; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string UnsignedTitle => _us ?? (_us = Form1.ConvertToUnSignStatic(Title));
+        private string _us;
     }
 
     public class DraftTicket
@@ -1914,6 +2022,10 @@ namespace GhiIssue
         public string Name { get; set; }
         public string Id { get; set; }
         public override string ToString() { return Name; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string UnsignedName => _un ?? (_un = Form1.ConvertToUnSignStatic(Name));
+        private string _un;
     }
 
     public class OmiResponse
@@ -1989,5 +2101,9 @@ namespace GhiIssue
         public string id { get; set; }
         public string name { get; set; }
         public override string ToString() { return name; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string UnsignedName => _un ?? (_un = Form1.ConvertToUnSignStatic(name));
+        private string _un;
     }
 }

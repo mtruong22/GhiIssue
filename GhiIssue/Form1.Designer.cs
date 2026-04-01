@@ -31,6 +31,7 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             tabControl1 = new TabControl();
             tabPage1 = new TabPage();
+            btnSyncToken = new Button();
             btnCheckRecent = new Button();
             btnRetry = new Button();
             btnBulkEdit = new Button();
@@ -66,6 +67,7 @@
             // 
             // tabPage1
             // 
+            tabPage1.Controls.Add(btnSyncToken);
             tabPage1.Controls.Add(btnCheckRecent);
             tabPage1.Controls.Add(btnRetry);
             tabPage1.Controls.Add(btnBulkEdit);
@@ -79,6 +81,17 @@
             tabPage1.TabIndex = 0;
             tabPage1.Text = "TẠO PHIẾU";
             tabPage1.UseVisualStyleBackColor = true;
+            // 
+            // btnSyncToken
+            // 
+            btnSyncToken.BackColor = Color.CornflowerBlue;
+            btnSyncToken.Font = new Font("Segoe UI", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            btnSyncToken.Location = new Point(400, 434);
+            btnSyncToken.Name = "btnSyncToken";
+            btnSyncToken.Size = new Size(184, 96);
+            btnSyncToken.TabIndex = 6;
+            btnSyncToken.Text = "Đồng bộ Token";
+            btnSyncToken.UseVisualStyleBackColor = false;
             // 
             // btnCheckRecent
             // 
@@ -224,7 +237,7 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v2.0";
+            Text = "Ghi Issue - v2.2";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();
@@ -253,5 +266,6 @@
         private Button btnViewOpen;
         private StatusStrip statusStrip1;
         private ToolStripStatusLabel lblStatusCount;
+        private Button btnSyncToken;
     }
 }

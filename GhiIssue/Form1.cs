@@ -39,7 +39,7 @@ namespace GhiIssue
 
         public Form1()
         {
-            this.Text = "Ghi Issue v2.1";
+            this.Text = "Ghi Issue v2.2";
 
             if (!Directory.Exists(Application.StartupPath)) Directory.CreateDirectory(Application.StartupPath);
 
@@ -83,6 +83,11 @@ namespace GhiIssue
             {
                 btnViewOpen.Click -= BtnViewOpen_Click;
                 btnViewOpen.Click += BtnViewOpen_Click;
+            }
+            if (this.Controls.Find("btnSyncToken", true).FirstOrDefault() is Button btnSyncToken)
+            {
+                btnSyncToken.Click -= BtnSyncToken_Click;
+                btnSyncToken.Click += BtnSyncToken_Click;
             }
 
             if (dgvCreateTickets != null)
@@ -288,6 +293,9 @@ namespace GhiIssue
 
                             UpdateStatusCount();
 
+                            // Ghi log khi lấy phiếu về
+                            WriteLog("INFO", $"Kéo phiếu đang xử lý về bảng", $"Số lượng: {omiData.payload.items.Count} phiếu | Của: {selectedEmp.Name}");
+
                             MessageBox.Show($"Đã kéo về {omiData.payload.items.Count} phiếu đang hoạt động trên hệ thống.\nHãy kéo xuống cuối bảng để kiểm tra!", "Tải Thành Công", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
                         else
@@ -381,6 +389,9 @@ namespace GhiIssue
 
                     UpdateStatusCount();
 
+                    // Ghi log khi xem danh sách phiếu
+                    WriteLog("INFO", $"Xem danh sách phiếu cần Đóng", $"Số lượng: {allTickets.Count} phiếu | Của: {selectedEmp.Name}");
+
                     MessageBox.Show($"Đang hiển thị {allTickets.Count} phiếu đang mở. \n(Dữ liệu chỉ hiển thị, chưa thực hiện lệnh Đóng)", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
@@ -388,6 +399,31 @@ namespace GhiIssue
                     Cursor.Current = Cursors.Default;
                     MessageBox.Show($"Có lỗi xảy ra: {ex.Message}", "Lỗi Code");
                 }
+            }
+        }
+
+        private async void BtnSyncToken_Click(object sender, EventArgs e)
+        {
+            DialogResult dialogResult = MessageBox.Show(
+                "Bạn có muốn đăng nhập lại để lấy Token và làm mới TOÀN BỘ dữ liệu (Tiêu đề Sheet, Tag, Người xử lý...) không?",
+                "Đồng bộ Token",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (dialogResult == DialogResult.Yes)
+            {
+                if (File.Exists(tokenFilePath)) File.Delete(tokenFilePath);
+                OMICRM_TOKEN = "";
+
+                // 1. Lấy Token mới và load lại Tag / Category
+                await PerformLoginSequenceAsync();
+
+                // 2. ÉP TẢI LẠI GOOGLE SHEET MỚI NHẤT
+                await SyncTitlesBackgroundAsync();
+
+                UpdateStatusCount();
+
+                MessageBox.Show("Đã đồng bộ Token và tải lại toàn bộ danh mục MỚI NHẤT!", "Hoàn tất", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
@@ -454,6 +490,11 @@ namespace GhiIssue
                         else if (selCol == "Người xử lý") { row.Cells["colAssignee"].Value = newVal; }
                     }
                     dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+
+                    // Ghi log hành động Sửa hàng loạt
+                    string displayValue = cbValue.Text; // Lấy tên hiển thị chữ thay vì ID
+                    WriteLog("INFO", $"Sửa hàng loạt {dgvCreateTickets.SelectedRows.Count} dòng", $"Cột: {selCol} -> Giá trị mới: {displayValue}");
+
                     MessageBox.Show($"Đã thay đổi hàng loạt cho {dgvCreateTickets.SelectedRows.Count} dòng!", "Thành công");
                     UpdateStatusCount();
                 }
@@ -658,7 +699,7 @@ namespace GhiIssue
         }
 
         // =========================================================================
-        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V2.1 FIX LỖI MERGED CELL)
+        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V2.2 FIX LỖI MERGED CELL)
         // =========================================================================
         private async Task LoadDefaultTitlesAsync()
         {
@@ -763,6 +804,59 @@ namespace GhiIssue
             Cursor.Current = Cursors.Default;
         }
 
+
+        // ================== HỆ THỐNG GHI LOG ==================
+        private static readonly object _logLock = new object();
+
+        // Hàm ghi log tổng quát mới
+        private void WriteLog(string level, string context, string detail = "")
+        {
+            try
+            {
+                lock (_logLock)
+                {
+                    // Đổi tên file thành GhiIssue.log cho chung chung (lưu cả lỗi lẫn thành công)
+                    string logFile = Path.Combine(Application.StartupPath, "GhiIssue.log");
+                    if (File.Exists(logFile) && new FileInfo(logFile).Length > 2 * 1024 * 1024)
+                    {
+                        File.Delete(logFile);
+                    }
+                    string logMsg = $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss}] [{level}] {context}\n";
+                    if (!string.IsNullOrEmpty(detail)) logMsg += $"Chi tiết: {detail}\n";
+                    logMsg += new string('-', 40) + "\n";
+                    File.AppendAllText(logFile, logMsg);
+                }
+            }
+            catch { /* Bỏ qua nếu lỗi hệ thống file */ }
+        }
+
+        // Giữ lại hàm LogError cũ gọi ké vào hàm mới để code cũ không bị báo đỏ
+        private void LogError(string context, Exception ex = null)
+        {
+            WriteLog("ERROR", context, ex?.Message);
+        }
+
+        // ================== HACK WINFORMS: ÉP ENTER SANG NGANG CHO MỌI CỘT ==================
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // Bắt trọn ổ: Nếu người dùng bấm Enter và đang thao tác trong bảng Tạo Phiếu
+            if (keyData == Keys.Enter && (dgvCreateTickets.Focused || dgvCreateTickets.EditingControl != null))
+            {
+                // Chốt lưu dữ liệu của ô đang gõ dở
+                if (dgvCreateTickets.IsCurrentCellInEditMode)
+                {
+                    dgvCreateTickets.CommitEdit(DataGridViewDataErrorContexts.Commit);
+                }
+
+                // Gửi phím Tab ảo để ép WinForms lướt sang ngang thay vì rớt xuống dòng
+                SendKeys.Send("{TAB}");
+
+                // Trả về true để báo máy tính là "Tôi xử lý Enter rồi, đừng tự rớt dòng nữa!"
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private void SaveDraft()
         {
             try
@@ -789,7 +883,15 @@ namespace GhiIssue
 
                 if (drafts.Count > 0)
                 {
-                    File.WriteAllText(draftFilePath, JsonSerializer.Serialize(drafts));
+                    string jsonContent = JsonSerializer.Serialize(drafts);
+                    string tempFilePath = draftFilePath + ".tmp";
+                    File.WriteAllText(tempFilePath, jsonContent);
+
+                    // Ghi đè an toàn, có backup nhẹ
+                    if (File.Exists(draftFilePath))
+                        File.Replace(tempFilePath, draftFilePath, draftFilePath + ".bak");
+                    else
+                        File.Move(tempFilePath, draftFilePath);
                 }
                 else if (File.Exists(draftFilePath))
                 {
@@ -846,7 +948,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "2.1"; // NHỚ ĐỔI THÀNH 2.1 ĐỂ TEST AUTO UPDATE NHÉ
+            string currentVersion = "2.2"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -1108,23 +1210,34 @@ namespace GhiIssue
 
         // FIX LỖI ENTER BỊ MẤT CHỮ KHI GÕ TAY
         // FIX LỖI "BỊ MÙ" KHÔNG HIỂN THỊ CHỮ KHI CLICK SANG Ô KHÁC
+        // FIX LỖI ENTER BỊ MẤT CHỮ KHI GÕ TAY
+        // FIX LỖI "BỊ MÙ" KHÔNG HIỂN THỊ CHỮ KHI CLICK CHỌN
         private void DgvCreateTickets_CellValidating(object sender, DataGridViewCellValidatingEventArgs e)
         {
             if (e.RowIndex < 0) return;
 
-            // Bắt lấy ô đang được gõ tay
+            // Bắt lấy ô đang được gõ/chọn
             if (dgvCreateTickets.EditingControl is ComboBox cb)
             {
                 string colName = dgvCreateTickets.Columns[e.ColumnIndex].Name;
                 string typedText = cb.Text.Trim();
 
-                if (string.IsNullOrEmpty(typedText)) return;
+                // NẾU NGƯỜI DÙNG XÓA TRẮNG -> XÓA LUÔN DỮ LIỆU TRONG Ô VÀ THOÁT (CHỐNG TỰ ĐIỀN DÒNG 1)
+                if (string.IsNullOrEmpty(typedText))
+                {
+                    dgvCreateTickets.Rows[e.RowIndex].Cells[e.ColumnIndex].Value = null;
+                    return;
+                }
+
+                // LẤY ĐÚNG ID TỪ DROPDOWN THAY VÌ LẤY TÊN
+                object finalValue = cb.SelectedValue;
 
                 if (colName == "colTitle")
                 {
                     if (!defaultTitles.Any(t => t.Title.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
                     {
                         defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
+                        finalValue = typedText;
                     }
                 }
                 else if (colName == "colTag")
@@ -1139,6 +1252,8 @@ namespace GhiIssue
                         col.DataSource = tagList;
                         col.DisplayMember = "name";
                         col.ValueMember = "id";
+
+                        finalValue = typedText; // Nhập tay thì ID = Tên
                     }
                 }
                 else if (colName == "colAssignee")
@@ -1153,11 +1268,16 @@ namespace GhiIssue
                         col.DataSource = employees;
                         col.DisplayMember = "Name";
                         col.ValueMember = "Id";
+
+                        finalValue = typedText; // Nhập tay thì ID = Tên
                     }
                 }
 
-                // Chốt hạ: Ép giá trị chết vào cái ô để nó hiện lên luôn
-                dgvCreateTickets.Rows[e.RowIndex].Cells[e.ColumnIndex].Value = typedText;
+                // CHỐT HẠ: Ép đúng Value (ID) vào ô để WinForms hiểu
+                if (finalValue != null)
+                {
+                    dgvCreateTickets.Rows[e.RowIndex].Cells[e.ColumnIndex].Value = finalValue;
+                }
             }
         }
 
@@ -1190,11 +1310,26 @@ namespace GhiIssue
                 }
                 else if (colName == "colTag")
                 {
-                    cb.DataSource = tagList.ToList();
+                    // CHỈ LẤY 100 ITEM KHI VỪA CLICK ĐỂ CHỐNG LAG KHUNG HÌNH
+                    var initialTagList = tagList.Take(100).ToList();
+
+                    // Nếu ô đang có Tag sẵn (không phải ô trống), phải nhét Tag đó vào list hiển thị
+                    if (cellValue != null && cellValue.ToString() != "")
+                    {
+                        if (!initialTagList.Any(t => t.id == cellValue.ToString()))
+                        {
+                            var missingTag = tagList.FirstOrDefault(t => t.id == cellValue.ToString());
+                            if (missingTag != null) initialTagList.Insert(0, missingTag);
+                        }
+                    }
+
+                    cb.DataSource = null;
+                    cb.DataSource = initialTagList;
                     cb.DisplayMember = "name";
                     cb.ValueMember = "id";
 
-                    if (cellValue != null) cb.SelectedValue = cellValue;
+                    // NẾU Ô TRỐNG THÌ ÉP DROPDOWN KHÔNG CHỌN GÌ CẢ (CHỐNG TỰ ĐIỀN DÒNG 1)
+                    if (cellValue != null && cellValue.ToString() != "") cb.SelectedValue = cellValue;
                     else cb.SelectedIndex = -1;
                 }
                 else if (colName == "colAssignee")
@@ -1260,10 +1395,15 @@ namespace GhiIssue
 
         private void Cb_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Enter)
+            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Tab)
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+
+                // Chốt lưu dữ liệu của ô đang gõ ngay lập tức
+                dgvCreateTickets.CommitEdit(DataGridViewDataErrorContexts.Commit);
+
+                // Gửi phím Tab ảo để WinForms tự động chuyển ô sang ngang mượt nhất
                 SendKeys.Send("{TAB}");
             }
         }
@@ -1298,7 +1438,6 @@ namespace GhiIssue
                 var cleanList = defaultTitles.Where(t => t.Group != "Khác (Nhập tay)").ToList();
                 var ds = string.IsNullOrEmpty(searchKeyword) ? cleanList : cleanList.Where(x => x.UnsignedTitle.Contains(searchKeyword)).ToList();
 
-                // MẤU CHỐT Ở ĐÂY: Luôn nhét cái chữ bạn đang gõ vào đầu danh sách để khi ấn Enter, WinForms nhận diện đây là dữ liệu hợp lệ và cho phép lưu!
                 if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Title.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
                 {
                     ds.Insert(0, new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
@@ -1312,25 +1451,32 @@ namespace GhiIssue
             }
             else if (colName == "colTag")
             {
-                var ds = string.IsNullOrEmpty(searchKeyword) ? tagList.ToList() : tagList.Where(x => x.UnsignedName.Contains(searchKeyword)).ToList();
-
+                // TỐI ƯU SIÊU TỐC: Chỉ render tối đa 100 Tag cùng lúc lên màn hình thả xuống
+                var ds = string.IsNullOrEmpty(searchKeyword)
+                    ? tagList.Take(100).ToList()
+                    : tagList.Where(x => x.UnsignedName.Contains(searchKeyword)).Take(100).ToList();
                 // MẤU CHỐT CỦA TAG
                 if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.name.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
                     ds.Insert(0, new TagItem { name = keyword, id = keyword });
                 else if (ds.Count == 0) ds.Add(new TagItem { name = keyword, id = keyword });
 
-                cb.DataSource = ds; cb.DisplayMember = "name"; cb.ValueMember = "id"; dataSource = ds;
+                cb.DataSource = ds;
+                cb.DisplayMember = "name";
+                cb.ValueMember = "id";
+                dataSource = ds;
             }
             else if (colName == "colAssignee")
             {
                 var ds = string.IsNullOrEmpty(searchKeyword) ? employees.ToList() : employees.Where(x => x.UnsignedName.Contains(searchKeyword)).ToList();
 
-                // MẤU CHỐT CỦA NGƯỜI XỬ LÝ
                 if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Name.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
                     ds.Insert(0, new Employee { Name = keyword, Id = keyword });
                 else if (ds.Count == 0) ds.Add(new Employee { Name = keyword, Id = keyword });
 
-                cb.DataSource = ds; cb.DisplayMember = "Name"; cb.ValueMember = "Id"; dataSource = ds;
+                cb.DataSource = ds;
+                cb.DisplayMember = "Name";
+                cb.ValueMember = "Id";
+                dataSource = ds;
             }
 
             if (dataSource != null && dataSource.Count > 0)
@@ -1600,7 +1746,7 @@ namespace GhiIssue
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
-                SendKeys.Send("{TAB}");
+                SendKeys.Send("{TAB}"); // Dùng Tab ảo để sang ngang chuẩn xác
             }
         }
 
@@ -1827,13 +1973,31 @@ namespace GhiIssue
 
                         if (response.IsSuccessStatusCode)
                         {
-                            row.Cells["colResult"].Value = "✅ Thành công";
-                            successCount++;
+                            // Cần check ruột JSON vì đôi khi OmiCRM lỗi nội bộ vẫn trả HTTP 200
+                            if (resStr.Contains("\"id\"") || resStr.Contains("\"_id\"") || resStr.Contains("\"success\":true"))
+                            {
+                                row.Cells["colResult"].Value = "✅ Thành công";
+                                successCount++;
+
+                                // Bổ sung: Dò ngược từ ID ra Tên hiển thị để ghi log cho dễ đọc
+                                // Nếu không tìm thấy (ví dụ gõ tay) thì lấy luôn chữ vừa gõ
+                                string tagName = tagList.FirstOrDefault(t => t.id == tagId)?.name ?? tagId;
+                                string empName = employees.FirstOrDefault(e => e.Id == empId)?.Name ?? empId;
+
+                                // GHI LOG THÀNH CÔNG VÀO FILE (Ghi tên thay vì ID)
+                                WriteLog("SUCCESS", $"Tạo phiếu mới thành công: '{title}'", $"Tag: {tagName} | Người xử lý: {empName}");
+                            }
+                            else
+                            {
+                                row.Cells["colResult"].Value = "❌ Lỗi ẩn: " + (resStr.Length > 80 ? resStr.Substring(0, 80) : resStr);
+                                LogError("Lỗi tạo phiếu ẩn từ API", new Exception(resStr));
+                            }
                         }
                         else
                         {
                             if (resStr.StartsWith("<")) row.Cells["colResult"].Value = "❌ Tường lửa chặn / Lỗi Token";
                             else row.Cells["colResult"].Value = "❌ " + (resStr.Length > 80 ? resStr.Substring(0, 80) : resStr);
+                            LogError($"Lỗi API ({response.StatusCode})", new Exception(resStr));
                         }
                     }
                     catch (Exception ex) { row.Cells["colResult"].Value = "❌ Lỗi: " + ex.Message; }
@@ -1961,6 +2125,9 @@ namespace GhiIssue
                                     successCount++;
                                     ticket.current_status = 4;
                                     recentlyClosedTicketIds.Add(realId);
+
+                                    // GHI LOG THÀNH CÔNG VÀO FILE (Thêm Tên người xử lý)
+                                    WriteLog("SUCCESS", $"Đóng phiếu thành công: '{ticket.name}'", $"Người xử lý: {selectedEmp.Name} | ID Phiếu: {realId}");
                                 }
                             }
                             catch { }

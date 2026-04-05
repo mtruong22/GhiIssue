@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             tabControl1 = new TabControl();
             tabPage1 = new TabPage();
@@ -39,6 +40,7 @@
             btnAddRow = new Button();
             dgvCreateTickets = new DataGridView();
             tabPage2 = new TabPage();
+            btnSearch = new Button();
             btnViewOpen = new Button();
             dgvTickets = new DataGridView();
             btnExecute = new Button();
@@ -62,7 +64,7 @@
             tabControl1.Location = new Point(12, 12);
             tabControl1.Name = "tabControl1";
             tabControl1.SelectedIndex = 0;
-            tabControl1.Size = new Size(1026, 591);
+            tabControl1.Size = new Size(1224, 632);
             tabControl1.TabIndex = 0;
             // 
             // tabPage1
@@ -77,16 +79,17 @@
             tabPage1.Location = new Point(4, 24);
             tabPage1.Name = "tabPage1";
             tabPage1.Padding = new Padding(3);
-            tabPage1.Size = new Size(1018, 563);
+            tabPage1.Size = new Size(1216, 604);
             tabPage1.TabIndex = 0;
             tabPage1.Text = "TẠO PHIẾU";
             tabPage1.UseVisualStyleBackColor = true;
             // 
             // btnSyncToken
             // 
+            btnSyncToken.Anchor = AnchorStyles.Bottom;
             btnSyncToken.BackColor = Color.CornflowerBlue;
             btnSyncToken.Font = new Font("Segoe UI", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            btnSyncToken.Location = new Point(400, 434);
+            btnSyncToken.Location = new Point(499, 475);
             btnSyncToken.Name = "btnSyncToken";
             btnSyncToken.Size = new Size(184, 96);
             btnSyncToken.TabIndex = 6;
@@ -98,7 +101,7 @@
             btnCheckRecent.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             btnCheckRecent.BackColor = Color.LightGray;
             btnCheckRecent.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            btnCheckRecent.Location = new Point(692, 495);
+            btnCheckRecent.Location = new Point(890, 536);
             btnCheckRecent.Name = "btnCheckRecent";
             btnCheckRecent.Size = new Size(136, 35);
             btnCheckRecent.TabIndex = 5;
@@ -110,7 +113,7 @@
             btnRetry.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             btnRetry.BackColor = Color.Salmon;
             btnRetry.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            btnRetry.Location = new Point(692, 434);
+            btnRetry.Location = new Point(890, 475);
             btnRetry.Name = "btnRetry";
             btnRetry.Size = new Size(136, 35);
             btnRetry.TabIndex = 4;
@@ -122,7 +125,7 @@
             btnBulkEdit.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             btnBulkEdit.BackColor = Color.Tan;
             btnBulkEdit.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            btnBulkEdit.Location = new Point(190, 467);
+            btnBulkEdit.Location = new Point(190, 508);
             btnBulkEdit.Name = "btnBulkEdit";
             btnBulkEdit.Size = new Size(136, 35);
             btnBulkEdit.TabIndex = 3;
@@ -135,7 +138,7 @@
             btnCreateTicket.BackColor = Color.Gold;
             btnCreateTicket.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
             btnCreateTicket.ForeColor = SystemColors.ControlText;
-            btnCreateTicket.Location = new Point(834, 434);
+            btnCreateTicket.Location = new Point(1032, 475);
             btnCreateTicket.Name = "btnCreateTicket";
             btnCreateTicket.Size = new Size(178, 96);
             btnCreateTicket.TabIndex = 2;
@@ -147,7 +150,7 @@
             btnAddRow.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             btnAddRow.BackColor = Color.Honeydew;
             btnAddRow.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-            btnAddRow.Location = new Point(6, 434);
+            btnAddRow.Location = new Point(6, 475);
             btnAddRow.Name = "btnAddRow";
             btnAddRow.Size = new Size(178, 96);
             btnAddRow.TabIndex = 1;
@@ -156,15 +159,19 @@
             // 
             // dgvCreateTickets
             // 
+            dataGridViewCellStyle1.BackColor = Color.AliceBlue;
+            dgvCreateTickets.AlternatingRowsDefaultCellStyle = dataGridViewCellStyle1;
             dgvCreateTickets.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dgvCreateTickets.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvCreateTickets.Location = new Point(6, 5);
             dgvCreateTickets.Name = "dgvCreateTickets";
-            dgvCreateTickets.Size = new Size(1006, 423);
+            dgvCreateTickets.RowTemplate.Height = 28;
+            dgvCreateTickets.Size = new Size(1204, 464);
             dgvCreateTickets.TabIndex = 0;
             // 
             // tabPage2
             // 
+            tabPage2.Controls.Add(btnSearch);
             tabPage2.Controls.Add(btnViewOpen);
             tabPage2.Controls.Add(dgvTickets);
             tabPage2.Controls.Add(btnExecute);
@@ -172,14 +179,24 @@
             tabPage2.Location = new Point(4, 24);
             tabPage2.Name = "tabPage2";
             tabPage2.Padding = new Padding(3);
-            tabPage2.Size = new Size(1018, 563);
+            tabPage2.Size = new Size(1216, 604);
             tabPage2.TabIndex = 1;
             tabPage2.Text = "ĐÓNG ISSUE";
             tabPage2.UseVisualStyleBackColor = true;
             // 
+            // btnSearch
+            // 
+            btnSearch.Location = new Point(6, 4);
+            btnSearch.Name = "btnSearch";
+            btnSearch.Size = new Size(32, 26);
+            btnSearch.TabIndex = 4;
+            btnSearch.Text = "🔍";
+            btnSearch.UseVisualStyleBackColor = true;
+            btnSearch.Click += btnSearch_Click;
+            // 
             // btnViewOpen
             // 
-            btnViewOpen.Location = new Point(290, 5);
+            btnViewOpen.Location = new Point(328, 7);
             btnViewOpen.Name = "btnViewOpen";
             btnViewOpen.Size = new Size(139, 23);
             btnViewOpen.TabIndex = 3;
@@ -197,7 +214,7 @@
             // 
             // btnExecute
             // 
-            btnExecute.Location = new Point(209, 6);
+            btnExecute.Location = new Point(247, 7);
             btnExecute.Name = "btnExecute";
             btnExecute.Size = new Size(75, 23);
             btnExecute.TabIndex = 1;
@@ -208,7 +225,7 @@
             // cboEmployees
             // 
             cboEmployees.FormattingEnabled = true;
-            cboEmployees.Location = new Point(6, 7);
+            cboEmployees.Location = new Point(44, 5);
             cboEmployees.Name = "cboEmployees";
             cboEmployees.Size = new Size(197, 23);
             cboEmployees.TabIndex = 0;
@@ -216,9 +233,9 @@
             // statusStrip1
             // 
             statusStrip1.Items.AddRange(new ToolStripItem[] { lblStatusCount });
-            statusStrip1.Location = new Point(0, 593);
+            statusStrip1.Location = new Point(0, 634);
             statusStrip1.Name = "statusStrip1";
-            statusStrip1.Size = new Size(1050, 22);
+            statusStrip1.Size = new Size(1248, 22);
             statusStrip1.TabIndex = 7;
             statusStrip1.Text = "statusStrip1";
             // 
@@ -232,12 +249,12 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1050, 615);
+            ClientSize = new Size(1248, 656);
             Controls.Add(statusStrip1);
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v2.2";
+            Text = "Ghi Issue - v3.0";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();
@@ -267,5 +284,6 @@
         private StatusStrip statusStrip1;
         private ToolStripStatusLabel lblStatusCount;
         private Button btnSyncToken;
+        private Button btnSearch;
     }
 }

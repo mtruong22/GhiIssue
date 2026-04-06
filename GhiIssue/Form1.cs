@@ -22,6 +22,10 @@ namespace GhiIssue
         private string titlesCachePath = Path.Combine(Application.StartupPath, "titles_cache.json");
         private string catsCachePath = Path.Combine(Application.StartupPath, "cats_cache.json");
         private string tagsCachePath = Path.Combine(Application.StartupPath, "tags_cache.json");
+        // --- BỘ NHỚ LƯU PHÂN LOẠI MẶC ĐỊNH ---
+        private string catCachePath = Path.Combine(Application.StartupPath, "last_cat.txt");
+        private string defaultCat = "FO_1_POS";
+        private string defaultSubCat = "POS_Lỗi kết nối";
         private string loginEmailCached = "";
 
         // BỘ NHỚ LƯU LỊCH SỬ GÕ PHÍM CHO CTRL+Z
@@ -56,11 +60,11 @@ namespace GhiIssue
                 btnCreateTicket.Click -= btnCreateTicket_Click;
                 btnCreateTicket.Click += btnCreateTicket_Click;
             }
-            if (btnAddRow != null)
-            {
-                btnAddRow.Click -= btnAddRow_Click;
-                btnAddRow.Click += btnAddRow_Click;
-            }
+            //if (btnAddRow != null)
+            //{
+            //    btnAddRow.Click -= btnAddRow_Click;
+            //    btnAddRow.Click += btnAddRow_Click;
+            //}
             if (btnExecute != null)
             {
                 btnExecute.Click -= btnExecute_Click;
@@ -68,21 +72,31 @@ namespace GhiIssue
             }
 
             // KẾT NỐI CÁC NÚT TÍNH NĂNG MỞ RỘNG
-            if (this.Controls.Find("btnRetry", true).FirstOrDefault() is Button btnRetry)
+            //if (this.Controls.Find("btnRetry", true).FirstOrDefault() is Button btnRetry)
+            //{
+            //    btnRetry.Click -= BtnRetry_Click;
+            //    btnRetry.Click += BtnRetry_Click;
+            //}
+            if (this.Controls.Find("btnTheme", true).FirstOrDefault() is Button btnTheme)
             {
-                btnRetry.Click -= BtnRetry_Click;
-                btnRetry.Click += BtnRetry_Click;
+                btnTheme.Click -= btnTheme_Click;
+                btnTheme.Click += btnTheme_Click;
+            }
+            if (this.Controls.Find("btnToggleCategory", true).FirstOrDefault() is Button btnToggle)
+            {
+                btnToggle.Click -= btnToggleCategory_Click;
+                btnToggle.Click += btnToggleCategory_Click;
             }
             if (this.Controls.Find("btnBulkEdit", true).FirstOrDefault() is Button btnBulkEdit)
             {
                 btnBulkEdit.Click -= BtnBulkEdit_Click;
                 btnBulkEdit.Click += BtnBulkEdit_Click;
             }
-            if (this.Controls.Find("btnCheckRecent", true).FirstOrDefault() is Button btnCheckRecent)
-            {
-                btnCheckRecent.Click -= BtnCheckRecent_Click;
-                btnCheckRecent.Click += BtnCheckRecent_Click;
-            }
+            //if (this.Controls.Find("btnCheckRecent", true).FirstOrDefault() is Button btnCheckRecent)
+            //{
+            //    btnCheckRecent.Click -= BtnCheckRecent_Click;
+            //    btnCheckRecent.Click += BtnCheckRecent_Click;
+            //}
             if (this.Controls.Find("btnViewOpen", true).FirstOrDefault() is Button btnViewOpen)
             {
                 btnViewOpen.Click -= BtnViewOpen_Click;
@@ -127,6 +141,16 @@ namespace GhiIssue
                 dgvTickets.ColumnHeaderMouseClick += DgvTickets_ColumnHeaderMouseClick;
                 // --- THÊM DÒNG NÀY ĐỂ BẬT TÍNH NĂNG SỬA PHIẾU ---
                 dgvTickets.CellDoubleClick += DgvTickets_CellDoubleClick;
+                // --- MENU CHUỘT PHẢI ---
+                ContextMenuStrip ticketMenu = new ContextMenuStrip();
+                ticketMenu.Items.Add("✏️ Chỉnh sửa phiếu", null, (s, e) => {
+                    if (dgvTickets.CurrentRow != null)
+                        DgvTickets_CellDoubleClick(dgvTickets, new DataGridViewCellEventArgs(dgvTickets.CurrentCell.ColumnIndex, dgvTickets.CurrentRow.Index));
+                });
+                ticketMenu.Items.Add("-");
+                ticketMenu.Items.Add("🗑️ Xóa phiếu (Trên hệ thống)", null, (s, e) => DeleteSelectedTicketsAsync());
+                dgvTickets.ContextMenuStrip = ticketMenu;
+                // --------------------------------------------------
             }
 
             this.FormClosing += Form1_FormClosing;
@@ -250,114 +274,114 @@ namespace GhiIssue
         // TÍNH NĂNG MỞ RỘNG: RETRY, XEM PHIẾU (TẠO/ĐÓNG), SỬA HÀNG LOẠT
         // =========================================================================
 
-        private void BtnRetry_Click(object sender, EventArgs e)
-        {
-            int retryCount = 0;
-            foreach (DataGridViewRow row in dgvCreateTickets.Rows)
-            {
-                if (row.IsNewRow) continue;
-                string currentResult = row.Cells["colResult"].Value?.ToString() ?? "";
+        //private void BtnRetry_Click(object sender, EventArgs e)
+        //{
+        //    int retryCount = 0;
+        //    foreach (DataGridViewRow row in dgvCreateTickets.Rows)
+        //    {
+        //        if (row.IsNewRow) continue;
+        //        string currentResult = row.Cells["colResult"].Value?.ToString() ?? "";
 
-                if (currentResult.Contains("❌"))
-                {
-                    row.Cells["colResult"].Value = ""; // Xóa lỗi để kích hoạt gửi lại
-                    retryCount++;
-                }
-            }
+        //        if (currentResult.Contains("❌"))
+        //        {
+        //            row.Cells["colResult"].Value = ""; // Xóa lỗi để kích hoạt gửi lại
+        //            retryCount++;
+        //        }
+        //    }
 
-            if (retryCount == 0)
-            {
-                MessageBox.Show("Không có phiếu nào bị lỗi để gửi lại!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+        //    if (retryCount == 0)
+        //    {
+        //        MessageBox.Show("Không có phiếu nào bị lỗi để gửi lại!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        //        return;
+        //    }
 
-            btnCreateTicket_Click(null, null);
-        }
+        //    btnCreateTicket_Click(null, null);
+        //}
 
-        private async void BtnCheckRecent_Click(object sender, EventArgs e)
-        {
-            Employee selectedEmp = (Employee)cboEmployees.SelectedItem;
-            if (selectedEmp == null) return;
+        //private async void BtnCheckRecent_Click(object sender, EventArgs e)
+        //{
+        //    Employee selectedEmp = (Employee)cboEmployees.SelectedItem;
+        //    if (selectedEmp == null) return;
 
-            var searchBody = new
-            {
-                status_filters = new[] { "active_state" },
-                assignee_contact_ids = new[] { selectedEmp.Id },
-                additional_layout = new[] { "object_association" },
-                has_notify_report = true,
-                page = "1",
-                size = "1000",
-                current_status = new[] { 0, 1, 2, 3 }
-            };
+        //    var searchBody = new
+        //    {
+        //        status_filters = new[] { "active_state" },
+        //        assignee_contact_ids = new[] { selectedEmp.Id },
+        //        additional_layout = new[] { "object_association" },
+        //        has_notify_report = true,
+        //        page = "1",
+        //        size = "1000",
+        //        current_status = new[] { 0, 1, 2, 3 }
+        //    };
 
-            var searchContent = new StringContent(JsonSerializer.Serialize(searchBody), Encoding.UTF8, "application/json");
-            Cursor.Current = Cursors.WaitCursor;
+        //    var searchContent = new StringContent(JsonSerializer.Serialize(searchBody), Encoding.UTF8, "application/json");
+        //    Cursor.Current = Cursors.WaitCursor;
 
-            using (HttpClient client = new HttpClient())
-            {
-                client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+        //    using (HttpClient client = new HttpClient())
+        //    {
+        //        client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
 
-                try
-                {
-                    HttpResponseMessage searchResponse = await client.PostAsync("https://ticket-v2-stg.omicrm.com/ticket/search?lng=vi&utm_source=web", searchContent);
-                    string resStr = await searchResponse.Content.ReadAsStringAsync();
+        //        try
+        //        {
+        //            HttpResponseMessage searchResponse = await client.PostAsync("https://ticket-v2-stg.omicrm.com/ticket/search?lng=vi&utm_source=web", searchContent);
+        //            string resStr = await searchResponse.Content.ReadAsStringAsync();
 
-                    if (searchResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized || resStr.Contains("Unauthorized"))
-                    {
-                        Cursor.Current = Cursors.Default;
-                        MessageBox.Show("Phiên đăng nhập đã hết hạn!\nVui lòng đăng nhập lại.", "Cảnh Báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        if (File.Exists(tokenFilePath)) File.Delete(tokenFilePath);
-                        OMICRM_TOKEN = "";
-                        await PerformLoginSequenceAsync();
-                        return;
-                    }
+        //            if (searchResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized || resStr.Contains("Unauthorized"))
+        //            {
+        //                Cursor.Current = Cursors.Default;
+        //                MessageBox.Show("Phiên đăng nhập đã hết hạn!\nVui lòng đăng nhập lại.", "Cảnh Báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        //                if (File.Exists(tokenFilePath)) File.Delete(tokenFilePath);
+        //                OMICRM_TOKEN = "";
+        //                await PerformLoginSequenceAsync();
+        //                return;
+        //            }
 
-                    if (searchResponse.IsSuccessStatusCode)
-                    {
-                        OmiResponse omiData = JsonSerializer.Deserialize<OmiResponse>(resStr);
-                        if (omiData?.payload?.items != null && omiData.payload.items.Count > 0)
-                        {
-                            dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+        //            if (searchResponse.IsSuccessStatusCode)
+        //            {
+        //                OmiResponse omiData = JsonSerializer.Deserialize<OmiResponse>(resStr);
+        //                if (omiData?.payload?.items != null && omiData.payload.items.Count > 0)
+        //                {
+        //                    dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
 
-                            foreach (var t in omiData.payload.items)
-                            {
-                                int idx = dgvCreateTickets.Rows.Add();
-                                var row = dgvCreateTickets.Rows[idx];
+        //                    foreach (var t in omiData.payload.items)
+        //                    {
+        //                        int idx = dgvCreateTickets.Rows.Add();
+        //                        var row = dgvCreateTickets.Rows[idx];
 
-                                row.Cells["colTitle"].Value = t.name;
-                                row.Cells["colCategory"].Value = "FO_1_POS";
-                                row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
-                                row.Cells["colAssignee"].Value = selectedEmp.Id;
-                                row.Cells["colResult"].Value = "☁️ Đã có trên hệ thống";
+        //                        row.Cells["colTitle"].Value = t.name;
+        //                        row.Cells["colCategory"].Value = "FO_1_POS";
+        //                        row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
+        //                        row.Cells["colAssignee"].Value = selectedEmp.Id;
+        //                        row.Cells["colResult"].Value = "☁️ Đã có trên hệ thống";
 
-                                row.DefaultCellStyle.BackColor = Color.LightGreen;
-                                row.ReadOnly = true;
-                            }
+        //                        row.DefaultCellStyle.BackColor = Color.LightGreen;
+        //                        row.ReadOnly = true;
+        //                    }
 
-                            dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
-                            Cursor.Current = Cursors.Default;
+        //                    dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+        //                    Cursor.Current = Cursors.Default;
 
-                            UpdateStatusCount();
+        //                    UpdateStatusCount();
 
-                            // Ghi log khi lấy phiếu về
-                            WriteLog("INFO", $"Kéo phiếu đang xử lý về bảng", $"Số lượng: {omiData.payload.items.Count} phiếu | Của: {selectedEmp.Name}");
+        //                    // Ghi log khi lấy phiếu về
+        //                    WriteLog("INFO", $"Kéo phiếu đang xử lý về bảng", $"Số lượng: {omiData.payload.items.Count} phiếu | Của: {selectedEmp.Name}");
 
-                            MessageBox.Show($"Đã kéo về {omiData.payload.items.Count} phiếu đang hoạt động trên hệ thống.\nHãy kéo xuống cuối bảng để kiểm tra!", "Tải Thành Công", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
-                        else
-                        {
-                            Cursor.Current = Cursors.Default;
-                            MessageBox.Show("Không tìm thấy phiếu nào của bạn trên hệ thống!", "Trống", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Cursor.Current = Cursors.Default;
-                    MessageBox.Show($"Có lỗi xảy ra: {ex.Message}", "Lỗi Code");
-                }
-            }
-        }
+        //                    MessageBox.Show($"Đã kéo về {omiData.payload.items.Count} phiếu đang hoạt động trên hệ thống.\nHãy kéo xuống cuối bảng để kiểm tra!", "Tải Thành Công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        //                }
+        //                else
+        //                {
+        //                    Cursor.Current = Cursors.Default;
+        //                    MessageBox.Show("Không tìm thấy phiếu nào của bạn trên hệ thống!", "Trống", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        //                }
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            Cursor.Current = Cursors.Default;
+        //            MessageBox.Show($"Có lỗi xảy ra: {ex.Message}", "Lỗi Code");
+        //        }
+        //    }
+        //}
 
         private async void BtnViewOpen_Click(object sender, EventArgs e)
         {
@@ -582,6 +606,16 @@ namespace GhiIssue
 
             if (File.Exists(catsCachePath)) { try { categoryList = JsonSerializer.Deserialize<List<CategoryItem>>(File.ReadAllText(catsCachePath)); } catch { } }
             if (File.Exists(tagsCachePath)) { try { tagList = JsonSerializer.Deserialize<List<TagItem>>(File.ReadAllText(tagsCachePath)); } catch { } }
+            // LÔI TRÍ NHỚ TỪ LẦN TẮT MÁY TRƯỚC RA
+            //if (File.Exists(catCachePath))
+            //{
+            //    try
+            //    {
+            //        string[] parts = File.ReadAllText(catCachePath).Split('|');
+            //        if (parts.Length == 2) { defaultCat = parts[0]; defaultSubCat = parts[1]; }
+            //    }
+            //    catch { }
+            //}
 
             employees = new List<Employee>()
             {
@@ -619,8 +653,8 @@ namespace GhiIssue
             HookStatusStrip();
             LoadDraft();
 
-            if (dgvCreateTickets.Rows.Count <= 1) btnAddRow_Click(null, null);
-
+            //if (dgvCreateTickets.Rows.Count <= 1) btnAddRow_Click(null, null);
+            EnsureSufficientRows(30);
             // BƯỚC 2: CHẠY NGẦM BACKGROUND ĐỂ TẢI SHEET & API TAG
             _ = Task.Run(async () =>
             {
@@ -631,6 +665,18 @@ namespace GhiIssue
                     await SyncTagsBackgroundAsync();
                 }
             });
+            // LOAD GIAO DIỆN MÀU SẮC NGƯỜI DÙNG ĐÃ CUSTOM
+            string themePath = Path.Combine(Application.StartupPath, "theme.txt");
+            if (File.Exists(themePath))
+            {
+                try
+                {
+                    string[] c = File.ReadAllText(themePath).Split('|');
+                    if (c.Length == 4) ApplyTheme(ColorTranslator.FromHtml(c[0]), ColorTranslator.FromHtml(c[1]), ColorTranslator.FromHtml(c[2]), ColorTranslator.FromHtml(c[3]));
+                    else ApplyTheme(ColorTranslator.FromHtml(c[0]), Color.WhiteSmoke, Color.White, SystemColors.Highlight); // Chống lỗi cho file theme cũ
+                }
+                catch { }
+            }
         }
 
         private void LoadDefaultTitlesFallback()
@@ -700,7 +746,20 @@ namespace GhiIssue
                         {
                             var freshList = catData.payload.Where(c => !string.IsNullOrEmpty(c.name) && c.types != null && c.types.Count > 0).ToList();
                             File.WriteAllText(catsCachePath, JsonSerializer.Serialize(freshList));
-                            this.Invoke(new Action(() => { categoryList = freshList; }));
+                            this.Invoke(new Action(() => {
+                                categoryList = freshList;
+
+                                // Bơm danh sách mới vào Não của 2 cột
+                                if (dgvCreateTickets != null && dgvCreateTickets.Columns.Contains("colCategory"))
+                                {
+                                    var colCat = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colCategory"];
+                                    colCat.DataSource = categoryList.ToList();
+
+                                    var colSub = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colSubCategory"];
+                                    var allSubs = categoryList.Where(c => c.types != null).SelectMany(c => c.types).ToList();
+                                    colSub.DataSource = allSubs;
+                                }
+                            }));
                         }
                     }
                 }
@@ -1133,9 +1192,11 @@ namespace GhiIssue
                             row.Cells["colDesc"].Value = draft.Desc;
 
                             // Nạp cứng 2 cột không đổi
-                            row.Cells["colCategory"].Value = "FO_1_POS";
-                            row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
-
+                            //row.Cells["colCategory"].Value = "FO_1_POS";
+                            //row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
+                            // Lấy Phân loại của bản nháp, nếu nháp rỗng thì lấy Mặc định
+                            row.Cells["colCategory"].Value = !string.IsNullOrEmpty(draft.CatId) ? draft.CatId : defaultCat;
+                            row.Cells["colSubCategory"].Value = !string.IsNullOrEmpty(draft.SubCatId) ? draft.SubCatId : defaultSubCat;
                             row.Cells["colTag"].Value = draft.TagId;
                             row.Cells["colAssignee"].Value = draft.EmpId;
                         }
@@ -1497,6 +1558,32 @@ namespace GhiIssue
                 string colName = dgvCreateTickets.CurrentCell.OwningColumn.Name;
                 object cellValue = dgvCreateTickets.CurrentCell.Value;
 
+                // XỬ LÝ ĐẶC BIỆT CHO 2 CỘT PHÂN LOẠI (KHÓA GÕ TAY)
+                if (colName == "colCategory" || colName == "colSubCategory")
+                {
+                    cb.DropDownStyle = ComboBoxStyle.DropDownList;
+
+                    if (colName == "colCategory")
+                    {
+                        cb.DataSource = categoryList.ToList();
+                        cb.DisplayMember = "name"; cb.ValueMember = "name";
+                    }
+                    else
+                    {
+                        string catName = dgvCreateTickets.CurrentRow.Cells["colCategory"].Value?.ToString() ?? "";
+                        var catInfo = categoryList.FirstOrDefault(c => c.name == catName);
+                        if (catInfo != null && catInfo.types != null)
+                        {
+                            cb.DataSource = catInfo.types.ToList();
+                            cb.DisplayMember = "name"; cb.ValueMember = "name";
+                        }
+                        else cb.DataSource = null;
+                    }
+
+                    if (cellValue != null) cb.Text = cellValue.ToString(); else cb.SelectedIndex = -1;
+                    return; // Dừng hàm tại đây, không cho chạy phần code của Tag/Title phía dưới nữa
+                }
+
                 if (colName == "colTitle")
                 {
                     string currentVal = cellValue?.ToString() ?? "";
@@ -1628,6 +1715,15 @@ namespace GhiIssue
             if (cb == null) return;
 
             string keyword = cb.Text;
+            int cursorPos = cb.SelectionStart; // <-- LƯU LẠI VỊ TRÍ CON TRỎ CHUỘT HIỆN TẠI
+
+            // LIÊN TỤC LƯU LẠI CHỮ ĐANG GÕ VÀO BỘ NHỚ
+            if (!isUndoing)
+            {
+                if (cellUndoStack.Count == 0 || cellUndoStack.Peek() != keyword)
+                    cellUndoStack.Push(keyword);
+            }
+
             string searchKeyword = ConvertToUnSign(keyword);
 
             cb.TextUpdate -= Cb_TextUpdate;
@@ -1641,55 +1737,36 @@ namespace GhiIssue
                 var ds = string.IsNullOrEmpty(searchKeyword) ? cleanList : cleanList.Where(x => x.UnsignedTitle.Contains(searchKeyword)).ToList();
 
                 if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Title.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
-                {
                     ds.Insert(0, new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
-                }
                 else if (ds.Count == 0) ds.Add(new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
 
-                cb.DataSource = ds;
-                cb.DisplayMember = "Title";
-                cb.ValueMember = "Title";
-                dataSource = ds;
+                cb.DataSource = ds; cb.DisplayMember = "Title"; cb.ValueMember = "Title"; dataSource = ds;
             }
             else if (colName == "colTag")
             {
-                // TỐI ƯU SIÊU TỐC: Chỉ render tối đa 100 Tag cùng lúc lên màn hình thả xuống
-                var ds = string.IsNullOrEmpty(searchKeyword)
-                    ? tagList.Take(100).ToList()
-                    : tagList.Where(x => x.UnsignedName.Contains(searchKeyword)).Take(100).ToList();
-                // MẤU CHỐT CỦA TAG
+                var ds = string.IsNullOrEmpty(searchKeyword) ? tagList.Take(100).ToList() : tagList.Where(x => x.UnsignedName.Contains(searchKeyword)).Take(100).ToList();
                 if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.name.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
                     ds.Insert(0, new TagItem { name = keyword, id = keyword });
                 else if (ds.Count == 0) ds.Add(new TagItem { name = keyword, id = keyword });
 
-                cb.DataSource = ds;
-                cb.DisplayMember = "name";
-                cb.ValueMember = "id";
-                dataSource = ds;
+                cb.DataSource = ds; cb.DisplayMember = "name"; cb.ValueMember = "id"; dataSource = ds;
             }
             else if (colName == "colAssignee")
             {
                 var ds = string.IsNullOrEmpty(searchKeyword) ? employees.ToList() : employees.Where(x => x.UnsignedName.Contains(searchKeyword)).ToList();
-
                 if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Name.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
                     ds.Insert(0, new Employee { Name = keyword, Id = keyword });
                 else if (ds.Count == 0) ds.Add(new Employee { Name = keyword, Id = keyword });
 
-                cb.DataSource = ds;
-                cb.DisplayMember = "Name";
-                cb.ValueMember = "Id";
-                dataSource = ds;
+                cb.DataSource = ds; cb.DisplayMember = "Name"; cb.ValueMember = "Id"; dataSource = ds;
             }
 
             if (dataSource != null && dataSource.Count > 0)
-            {
-                // Chỉ thả danh sách xuống nếu có nhiều lựa chọn hoặc 1 lựa chọn khác với chữ đang gõ
                 cb.DroppedDown = dataSource.Count > 1 || (dataSource.Count == 1 && dataSource[0].ToString() != keyword);
-            }
             else cb.DroppedDown = false;
 
             cb.Text = keyword;
-            cb.SelectionStart = keyword.Length;
+            cb.SelectionStart = cursorPos; // <-- TRẢ LẠI CHÍNH XÁC VỊ TRÍ CON TRỎ CHUỘT
             cb.TextUpdate += Cb_TextUpdate;
             Cursor.Current = Cursors.Default;
         }
@@ -1715,6 +1792,39 @@ namespace GhiIssue
             string colName = dgvCreateTickets.Columns[e.ColumnIndex].Name;
             var currentRow = dgvCreateTickets.Rows[e.RowIndex];
 
+            // TỰ ĐỘNG RESET PHÂN LOẠI & LƯU VÀO TRÍ NHỚ
+            if (colName == "colCategory" || colName == "colSubCategory")
+            {
+                if (colName == "colCategory")
+                {
+                    dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+
+                    // LẤY TỰ ĐỘNG PHÂN LOẠI ĐẦU TIÊN CỦA CHỦ ĐỀ MỚI ĐỂ TRÁNH RỖNG
+                    string selectedCat = currentRow.Cells["colCategory"].Value?.ToString();
+                    var catInfo = categoryList.FirstOrDefault(c => c.name == selectedCat);
+                    if (catInfo != null && catInfo.types != null && catInfo.types.Count > 0)
+                    {
+                        currentRow.Cells["colSubCategory"].Value = catInfo.types[0].name;
+                    }
+                    else
+                    {
+                        currentRow.Cells["colSubCategory"].Value = null;
+                    }
+
+                    dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+                }
+
+                string curCat = currentRow.Cells["colCategory"].Value?.ToString();
+                string curSub = currentRow.Cells["colSubCategory"].Value?.ToString();
+
+                if (!string.IsNullOrEmpty(curCat) && !string.IsNullOrEmpty(curSub))
+                {
+                    defaultCat = curCat;
+                    defaultSubCat = curSub;
+                    File.WriteAllText(catCachePath, defaultCat + "|" + defaultSubCat);
+                }
+            }
+
             if (colName == "colTitle")
             {
                 string selectedTitle = currentRow.Cells["colTitle"].Value?.ToString() ?? "";
@@ -1730,6 +1840,7 @@ namespace GhiIssue
                     currentRow.Cells["colGroup"].Value = "Khác (Nhập tay)";
                 }
                 dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+                EnsureSufficientRows(5); // Cứ gõ tiêu đề là tự động bơm, giữ luôn có 5 dòng trống dự trữ
             }
 
             if (colName == "colAssignee")
@@ -1778,6 +1889,19 @@ namespace GhiIssue
                         if (catData?.payload != null)
                         {
                             categoryList = catData.payload.Where(c => !string.IsNullOrEmpty(c.name) && c.types != null && c.types.Count > 0).ToList();
+
+                            // Bơm danh sách vào Cột ngay lập tức
+                            this.Invoke(new Action(() => {
+                                if (dgvCreateTickets != null && dgvCreateTickets.Columns.Contains("colCategory"))
+                                {
+                                    var colCat = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colCategory"];
+                                    colCat.DataSource = categoryList.ToList();
+
+                                    var colSub = (DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colSubCategory"];
+                                    var allSubs = categoryList.Where(c => c.types != null).SelectMany(c => c.types).ToList();
+                                    colSub.DataSource = allSubs;
+                                }
+                            }));
                         }
                     }
                 }
@@ -1832,7 +1956,6 @@ namespace GhiIssue
             }
         }
 
-        // ĐÃ SỬA CỘT CHỦ ĐỀ & PHÂN LOẠI THÀNH READ ONLY
         private void SetupCreateTicketGrid()
         {
             if (dgvCreateTickets == null) return;
@@ -1855,7 +1978,7 @@ namespace GhiIssue
             gridMenu.Items.Add("📋 Paste (Ctrl+V)", null, (s, e) => PasteFromClipboard());
             gridMenu.Items.Add("✂️ Cut (Ctrl+X)", null, (s, e) => CutToClipboard());
             gridMenu.Items.Add("-");
-            gridMenu.Items.Add("❌ Delete", null, (s, e) => SmartDelete());
+            gridMenu.Items.Add("🗑 Xóa (Delete)", null, (s, e) => SmartDelete());
             dgvCreateTickets.ContextMenuStrip = gridMenu;
 
             DataGridViewTextBoxColumn colGroup = new DataGridViewTextBoxColumn();
@@ -1872,32 +1995,38 @@ namespace GhiIssue
             colTitle.DataSource = defaultTitles;
             colTitle.DisplayMember = "Title";
             colTitle.ValueMember = "Title";
-            colTitle.FillWeight = 30;
+            colTitle.FillWeight = 35;
             colTitle.DisplayStyleForCurrentCellOnly = true; // Chỉ hiện mũi tên ở ô đang chọn
             colTitle.FlatStyle = FlatStyle.Flat; // Xóa viền 3D, làm nút phẳng hiện đại
             dgvCreateTickets.Columns.Add(colTitle);
 
             dgvCreateTickets.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Mô tả chi tiết", Name = "colDesc", FillWeight = 15 });
 
-            // KHÓA CỨNG: CHỦ ĐỀ
-            // ẨN CỘT: CHỦ ĐỀ & PHÂN LOẠI (Vẫn tồn tại để gửi API)
-            DataGridViewTextBoxColumn colCategory = new DataGridViewTextBoxColumn();
-            //colCategory.HeaderText = "Chủ đề";
+            // CỘT CHỦ ĐỀ (Đã nạp bộ nhớ chống mù chữ)
+            DataGridViewComboBoxColumn colCategory = new DataGridViewComboBoxColumn();
+            colCategory.HeaderText = "Chủ đề";
             colCategory.Name = "colCategory";
-            //colCategory.ReadOnly = true;
-            //colCategory.DefaultCellStyle.BackColor = Color.LightGray;
-            //colCategory.FillWeight = 10;
             colCategory.Visible = false;
+            colCategory.DisplayStyleForCurrentCellOnly = true;
+            colCategory.FlatStyle = FlatStyle.Flat;
+            colCategory.FillWeight = 15;
+            colCategory.DataSource = categoryList.ToList();
+            colCategory.DisplayMember = "name";
+            colCategory.ValueMember = "name";
             dgvCreateTickets.Columns.Add(colCategory);
 
-            // KHÓA CỨNG: PHÂN LOẠI
-            DataGridViewTextBoxColumn colSubCategory = new DataGridViewTextBoxColumn();
-            //colSubCategory.HeaderText = "Phân loại";
+            // CỘT PHÂN LOẠI (Đã nạp bộ nhớ chống mù chữ)
+            DataGridViewComboBoxColumn colSubCategory = new DataGridViewComboBoxColumn();
+            colSubCategory.HeaderText = "Phân loại";
             colSubCategory.Name = "colSubCategory";
-            //colSubCategory.ReadOnly = true;
-            //colSubCategory.DefaultCellStyle.BackColor = Color.LightGray;
-            //colSubCategory.FillWeight = 15;
             colSubCategory.Visible = false;
+            colSubCategory.DisplayStyleForCurrentCellOnly = true;
+            colSubCategory.FlatStyle = FlatStyle.Flat;
+            colSubCategory.FillWeight = 15;
+            var allSubCats = categoryList.Where(c => c.types != null).SelectMany(c => c.types).ToList();
+            colSubCategory.DataSource = allSubCats;
+            colSubCategory.DisplayMember = "name";
+            colSubCategory.ValueMember = "name";
             dgvCreateTickets.Columns.Add(colSubCategory);
 
             DataGridViewComboBoxColumn colTag = new DataGridViewComboBoxColumn();
@@ -1932,12 +2061,18 @@ namespace GhiIssue
 
         private void DgvCreateTickets_DefaultValuesNeeded(object sender, DataGridViewRowEventArgs e)
         {
-            e.Row.Cells["colCategory"].Value = "FO_1_POS";
-            e.Row.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
-            if (!string.IsNullOrEmpty(defaultAssigneeId))
+            if (e.Row.Index > 0)
             {
-                e.Row.Cells["colAssignee"].Value = defaultAssigneeId;
+                var prevRow = dgvCreateTickets.Rows[e.Row.Index - 1];
+                e.Row.Cells["colCategory"].Value = prevRow.Cells["colCategory"].Value ?? defaultCat;
+                e.Row.Cells["colSubCategory"].Value = prevRow.Cells["colSubCategory"].Value ?? defaultSubCat;
             }
+            else
+            {
+                e.Row.Cells["colCategory"].Value = defaultCat;
+                e.Row.Cells["colSubCategory"].Value = defaultSubCat;
+            }
+            if (!string.IsNullOrEmpty(defaultAssigneeId)) e.Row.Cells["colAssignee"].Value = defaultAssigneeId;
         }
 
         private void DgvCreateTickets_KeyDown(object sender, KeyEventArgs e)
@@ -1947,14 +2082,14 @@ namespace GhiIssue
             else if (e.Control && e.KeyCode == Keys.X) { CutToClipboard(); e.Handled = true; }
             else if (e.KeyCode == Keys.Delete)
             {
-                SmartDelete();
+                SmartDelete(); // Giờ đây phím Delete thường sẽ là Xóa dòng
                 e.Handled = true;
             }
             else if (e.KeyCode == Keys.Enter)
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
-                SendKeys.Send("{TAB}"); // Dùng Tab ảo để sang ngang chuẩn xác
+                SendKeys.Send("{TAB}");
             }
         }
 
@@ -1968,37 +2103,66 @@ namespace GhiIssue
             try
             {
                 CopyToClipboard();
-                DeleteSelectedCells();
+                //DeleteSelectedCells();
             }
             catch { }
+        }
+
+        private void DeleteEntireRow()
+        {
+            if (dgvCreateTickets.SelectedCells.Count > 0)
+            {
+                var rowIndices = dgvCreateTickets.SelectedCells.Cast<DataGridViewCell>()
+                                    .Select(c => c.RowIndex).Distinct().OrderByDescending(r => r).ToList();
+
+                dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+                foreach (int rIndex in rowIndices)
+                {
+                    if (!dgvCreateTickets.Rows[rIndex].IsNewRow) dgvCreateTickets.Rows.RemoveAt(rIndex);
+                }
+                dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+                EnsureSufficientRows(30); // Xóa xong tự bù lại cho đủ 30 dòng
+                UpdateStatusCount();
+            }
+        }
+
+        private void ResetEntireTable()
+        {
+            if (MessageBox.Show("Bạn có chắc muốn xóa SẠCH SÀNH SANH toàn bộ dữ liệu trên bảng để làm lại từ đầu không?", "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+                dgvCreateTickets.Rows.Clear();
+                dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+                EnsureSufficientRows(30);
+                SaveDraft();
+                UpdateStatusCount();
+            }
         }
 
         private void SmartDelete()
         {
             try
             {
-                if (dgvCreateTickets.SelectedRows.Count > 0)
+                if (dgvCreateTickets.SelectedCells.Count > 0)
                 {
-                    foreach (DataGridViewRow row in dgvCreateTickets.SelectedRows.Cast<DataGridViewRow>().ToList())
-                    {
-                        if (!row.IsNewRow) dgvCreateTickets.Rows.Remove(row);
-                    }
-                }
-                else
-                {
-                    DeleteSelectedCells();
-                }
-            }
-            catch { }
-        }
+                    // Lấy danh sách các dòng đang được bôi đen
+                    var rowIndices = dgvCreateTickets.SelectedCells.Cast<DataGridViewCell>()
+                                        .Select(c => c.RowIndex).Distinct().OrderByDescending(r => r).ToList();
 
-        private void DeleteSelectedCells()
-        {
-            try
-            {
-                foreach (DataGridViewCell cell in dgvCreateTickets.SelectedCells)
-                {
-                    if (!cell.ReadOnly) cell.Value = null;
+                    dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+
+                    // Thực hiện xóa bốc hơi các dòng đó
+                    foreach (int rIndex in rowIndices)
+                    {
+                        if (!dgvCreateTickets.Rows[rIndex].IsNewRow)
+                            dgvCreateTickets.Rows.RemoveAt(rIndex);
+                    }
+
+                    dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+
+                    // Tự động bù lại dòng trống ở cuối bảng để luôn giữ mức 30 dòng
+                    EnsureSufficientRows(30);
+                    UpdateStatusCount();
                 }
             }
             catch { }
@@ -2077,34 +2241,37 @@ namespace GhiIssue
             }
         }
 
-        private void btnAddRow_Click(object sender, EventArgs e)
-        {
-            if (dgvCreateTickets != null)
-            {
-                int oldRowCount = dgvCreateTickets.Rows.Count;
-                dgvCreateTickets.Rows.Add(5);
-                dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+        //private void btnAddRow_Click(object sender, EventArgs e)
+        //{
+        //    if (dgvCreateTickets != null)
+        //    {
+        //        int oldRowCount = dgvCreateTickets.Rows.Count;
+        //        dgvCreateTickets.Rows.Add(5);
+        //        dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
 
-                try
-                {
-                    for (int i = oldRowCount - 1; i < dgvCreateTickets.Rows.Count; i++)
-                    {
-                        var targetRow = dgvCreateTickets.Rows[i];
-                        if (targetRow.IsNewRow) continue;
+        //        try
+        //        {
+        //            for (int i = oldRowCount - 1; i < dgvCreateTickets.Rows.Count; i++)
+        //            {
+        //                var targetRow = dgvCreateTickets.Rows[i];
+        //                if (targetRow.IsNewRow) continue;
 
-                        if (!string.IsNullOrEmpty(defaultAssigneeId)) targetRow.Cells["colAssignee"].Value = defaultAssigneeId;
+        //                if (!string.IsNullOrEmpty(defaultAssigneeId)) targetRow.Cells["colAssignee"].Value = defaultAssigneeId;
 
-                        // ÉP CỨNG DỮ LIỆU
-                        targetRow.Cells["colCategory"].Value = "FO_1_POS";
-                        targetRow.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
-                    }
-                }
-                finally
-                {
-                    dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
-                }
-            }
-        }
+        //                // ÉP CỨNG DỮ LIỆU
+        //                //targetRow.Cells["colCategory"].Value = "FO_1_POS";
+        //                //targetRow.Cells["colSubCategory"].Value = "POS_Lỗi kết nối";
+        //                // ÉP DỮ LIỆU TỪ BỘ NHỚ (Đã bỏ gán cứng "FO_1_POS")
+        //                targetRow.Cells["colCategory"].Value = defaultCat;
+        //                targetRow.Cells["colSubCategory"].Value = defaultSubCat;
+        //            }
+        //        }
+        //        finally
+        //        {
+        //            dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+        //        }
+        //    }
+        //}
 
         private async void btnCreateTicket_Click(object sender, EventArgs e)
         {
@@ -2217,17 +2384,35 @@ namespace GhiIssue
 
             if (successCount > 0)
             {
+                // ÉP BỘ NHỚ QUAY VỀ MẶC ĐỊNH GỐC SAU KHI GỬI THÀNH CÔNG
+                defaultCat = "FO_1_POS";
+                defaultSubCat = "POS_Lỗi kết nối";
+                File.WriteAllText(catCachePath, defaultCat + "|" + defaultSubCat);
+
+                dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
                 for (int i = dgvCreateTickets.Rows.Count - 1; i >= 0; i--)
                 {
                     DataGridViewRow currentRow = dgvCreateTickets.Rows[i];
                     if (currentRow.IsNewRow) continue;
+
                     if (currentRow.Cells["colResult"].Value != null && currentRow.Cells["colResult"].Value.ToString().Contains("✅"))
                     {
-                        dgvCreateTickets.Rows.RemoveAt(i);
+                        // Tẩy trắng ô thành công để bạn gõ tiếp
+                        currentRow.Cells["colTitle"].Value = null;
+                        currentRow.Cells["colGroup"].Value = null;
+                        currentRow.Cells["colDesc"].Value = null;
+                        currentRow.Cells["colTag"].Value = null;
+                        currentRow.Cells["colResult"].Value = null;
+
+                        // Ép cứng về Mặc định "POS - Lỗi kết nối"
+                        currentRow.Cells["colCategory"].Value = defaultCat;
+                        currentRow.Cells["colSubCategory"].Value = defaultSubCat;
+                        if (!string.IsNullOrEmpty(defaultAssigneeId)) currentRow.Cells["colAssignee"].Value = defaultAssigneeId;
                     }
                 }
-                if (dgvCreateTickets.Rows.Count <= 1) btnAddRow_Click(null, null);
+                dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
 
+                EnsureSufficientRows(30);
                 SaveDraft();
             }
         }
@@ -2610,6 +2795,231 @@ namespace GhiIssue
                 sortAscending = !sortAscending; // Đảo chiều cho lần click sau
                 dgvTickets.DataSource = list;   // Nạp lại bảng
             }
+        }
+        // =========================================================================
+        // TÍNH NĂNG NÚT: ĐỔI MÀU, ẨN/HIỆN PHÂN LOẠI
+        // =========================================================================
+        private void btnTheme_Click(object sender, EventArgs e)
+        {
+            Form popup = new Form() { Width = 350, Height = 300, Text = "Phối màu Giao diện", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
+
+            Label lbl1 = new Label() { Text = "Màu Tiêu đề cột:", Left = 20, Top = 20, AutoSize = true };
+            Button btnHeader = new Button() { Left = 150, Top = 15, Width = 150, BackColor = dgvCreateTickets.ColumnHeadersDefaultCellStyle.BackColor.IsEmpty ? SystemColors.Control : dgvCreateTickets.ColumnHeadersDefaultCellStyle.BackColor, FlatStyle = FlatStyle.Flat };
+
+            Label lbl2 = new Label() { Text = "Màu dòng lẻ (Zebra):", Left = 20, Top = 60, AutoSize = true };
+            Button btnOdd = new Button() { Left = 150, Top = 55, Width = 150, BackColor = dgvCreateTickets.AlternatingRowsDefaultCellStyle.BackColor.IsEmpty ? Color.WhiteSmoke : dgvCreateTickets.AlternatingRowsDefaultCellStyle.BackColor, FlatStyle = FlatStyle.Flat };
+
+            Label lbl3 = new Label() { Text = "Màu dòng chẵn:", Left = 20, Top = 100, AutoSize = true };
+            Button btnEven = new Button() { Left = 150, Top = 95, Width = 150, BackColor = dgvCreateTickets.RowsDefaultCellStyle.BackColor.IsEmpty ? Color.White : dgvCreateTickets.RowsDefaultCellStyle.BackColor, FlatStyle = FlatStyle.Flat };
+
+            Label lbl4 = new Label() { Text = "Màu khi bôi đen:", Left = 20, Top = 140, AutoSize = true };
+            Button btnSelect = new Button() { Left = 150, Top = 135, Width = 150, BackColor = dgvCreateTickets.DefaultCellStyle.SelectionBackColor.IsEmpty ? SystemColors.Highlight : dgvCreateTickets.DefaultCellStyle.SelectionBackColor, FlatStyle = FlatStyle.Flat };
+
+            EventHandler pickColor = (s, ev) => {
+                Button btn = (Button)s;
+                ColorDialog cd = new ColorDialog() { Color = btn.BackColor };
+                if (cd.ShowDialog() == DialogResult.OK) btn.BackColor = cd.Color;
+            };
+
+            btnHeader.Click += pickColor; btnOdd.Click += pickColor; btnEven.Click += pickColor; btnSelect.Click += pickColor;
+
+            // Nút Mặc định (Mới)
+            Button btnDefault = new Button() { Text = "Mặc định", Left = 40, Top = 200, Width = 110, Height = 35, BackColor = Color.LightGray, FlatStyle = FlatStyle.Flat };
+            btnDefault.Click += (s, ev) => {
+                string themePath = Path.Combine(Application.StartupPath, "theme.txt");
+                if (File.Exists(themePath)) File.Delete(themePath); // Xóa bộ nhớ màu
+
+                ResetThemeToDefault(); // Đưa UI về gốc
+                MessageBox.Show("Đã khôi phục giao diện về mặc định!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                popup.DialogResult = DialogResult.Abort; // Đóng popup không kích hoạt lưu
+            };
+
+            // Nút Lưu cấu hình (Đã đổi sang màu xanh lam đẹp mắt hơn)
+            Button btnSave = new Button() { Text = "Lưu cấu hình", Left = 180, Top = 200, Width = 110, Height = 35, BackColor = Color.DodgerBlue, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK };
+
+            popup.Controls.Add(lbl1); popup.Controls.Add(btnHeader);
+            popup.Controls.Add(lbl2); popup.Controls.Add(btnOdd);
+            popup.Controls.Add(lbl3); popup.Controls.Add(btnEven);
+            popup.Controls.Add(lbl4); popup.Controls.Add(btnSelect);
+            popup.Controls.Add(btnDefault); popup.Controls.Add(btnSave);
+            popup.AcceptButton = btnSave;
+
+            if (popup.ShowDialog() == DialogResult.OK)
+            {
+                ApplyTheme(btnHeader.BackColor, btnOdd.BackColor, btnEven.BackColor, btnSelect.BackColor);
+                // Lưu 4 màu vào file để lần sau mở máy vẫn nhớ
+                string config = $"{ColorTranslator.ToHtml(btnHeader.BackColor)}|{ColorTranslator.ToHtml(btnOdd.BackColor)}|{ColorTranslator.ToHtml(btnEven.BackColor)}|{ColorTranslator.ToHtml(btnSelect.BackColor)}";
+                File.WriteAllText(Path.Combine(Application.StartupPath, "theme.txt"), config);
+            }
+        }
+
+        private void ApplyTheme(Color header, Color oddRow, Color evenRow, Color selected)
+        {
+            // Áp dụng cho Bảng Tạo Phiếu
+            dgvCreateTickets.EnableHeadersVisualStyles = false;
+            dgvCreateTickets.ColumnHeadersDefaultCellStyle.BackColor = header;
+            dgvCreateTickets.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+            dgvCreateTickets.AlternatingRowsDefaultCellStyle.BackColor = oddRow;
+            dgvCreateTickets.RowsDefaultCellStyle.BackColor = evenRow;
+            dgvCreateTickets.DefaultCellStyle.SelectionBackColor = selected;
+
+            // Áp dụng cho Bảng Đóng Issue
+            if (dgvTickets != null)
+            {
+                dgvTickets.EnableHeadersVisualStyles = false;
+                dgvTickets.ColumnHeadersDefaultCellStyle.BackColor = header;
+                dgvTickets.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+                dgvTickets.AlternatingRowsDefaultCellStyle.BackColor = oddRow;
+                dgvTickets.RowsDefaultCellStyle.BackColor = evenRow;
+                dgvTickets.DefaultCellStyle.SelectionBackColor = selected;
+            }
+        }
+
+        private void ResetThemeToDefault()
+        {
+            Action<DataGridView> resetGrid = (grid) => {
+                if (grid == null) return;
+
+                // Trả lại toàn bộ giao diện nguyên thủy của Windows Forms
+                grid.EnableHeadersVisualStyles = true;
+                grid.ColumnHeadersDefaultCellStyle.BackColor = Color.Empty;
+                grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.Empty;
+                grid.AlternatingRowsDefaultCellStyle.BackColor = Color.Empty;
+                grid.RowsDefaultCellStyle.BackColor = Color.Empty;
+                grid.DefaultCellStyle.SelectionBackColor = Color.Empty;
+            };
+
+            resetGrid(dgvCreateTickets);
+            resetGrid(dgvTickets);
+        }
+
+        private void btnToggleCategory_Click(object sender, EventArgs e)
+        {
+            bool isCurrentlyHidden = !dgvCreateTickets.Columns["colCategory"].Visible;
+            dgvCreateTickets.Columns["colCategory"].Visible = isCurrentlyHidden;
+            dgvCreateTickets.Columns["colSubCategory"].Visible = isCurrentlyHidden;
+
+            Button btn = sender as Button;
+            if (btn != null) btn.Text = isCurrentlyHidden ? "👁️ Ẩn Phân Loại" : "👁️ Hiện Phân Loại";
+        }
+        // =========================================================================
+        // ĐỘNG CƠ TỰ ĐỘNG BƠM DÒNG: LUÔN GIỮ BẢNG ĐẦY ẮP MÀ KHÔNG CẦN BẤM NÚT
+        // =========================================================================
+        private void EnsureSufficientRows(int minRows)
+        {
+            if (dgvCreateTickets == null) return;
+
+            int emptyCount = 0;
+            foreach (DataGridViewRow row in dgvCreateTickets.Rows)
+            {
+                if (row.IsNewRow) continue;
+                if (string.IsNullOrEmpty(row.Cells["colTitle"].Value?.ToString())) emptyCount++;
+            }
+
+            if (emptyCount < minRows)
+            {
+                int rowsToAdd = minRows - emptyCount;
+                dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+                try
+                {
+                    for (int i = 0; i < rowsToAdd; i++)
+                    {
+                        int idx = dgvCreateTickets.Rows.Add();
+                        var targetRow = dgvCreateTickets.Rows[idx];
+
+                        if (!string.IsNullOrEmpty(defaultAssigneeId)) targetRow.Cells["colAssignee"].Value = defaultAssigneeId;
+
+                        // Tự động điền dữ liệu từ bộ nhớ thay vì điền cứng
+                        targetRow.Cells["colCategory"].Value = defaultCat;
+                        targetRow.Cells["colSubCategory"].Value = defaultSubCat;
+                    }
+                }
+                finally
+                {
+                    dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+                }
+            }
+            UpdateStatusCount();
+        }
+        // =========================================================================
+        // TÍNH NĂNG MỚI: XÓA PHIẾU TRỰC TIẾP TRÊN OMICRM (TỪ TAB ĐÓNG ISSUE)
+        // =========================================================================
+        private async void DeleteSelectedTicketsAsync()
+        {
+            // 1. Lấy danh sách các dòng đang được chọn
+            var selectedRows = dgvTickets.SelectedCells.Cast<DataGridViewCell>()
+                                .Select(c => c.OwningRow).Distinct().ToList();
+
+            if (selectedRows.Count == 0) return;
+
+            DialogResult confirm = MessageBox.Show(
+                $"Bạn có chắc chắn muốn XÓA VĨNH VIỄN {selectedRows.Count} phiếu này khỏi hệ thống OmiCRM không?\n(Hành động này KHÔNG THỂ HOÀN TÁC!)",
+                "Cảnh báo Xóa", MessageBoxButtons.YesNo, MessageBoxIcon.Error);
+
+            if (confirm == DialogResult.No) return;
+
+            Cursor.Current = Cursors.WaitCursor;
+            List<string> idsToDelete = new List<string>();
+
+            // Lấy ID thật của phiếu
+            foreach (var row in selectedRows)
+            {
+                var ticket = row.DataBoundItem as TicketItem;
+                if (ticket != null)
+                {
+                    string realId = !string.IsNullOrEmpty(ticket._id) ? ticket._id : ticket.id;
+                    if (!string.IsNullOrEmpty(realId)) idsToDelete.Add(realId);
+                }
+            }
+
+            if (idsToDelete.Count > 0)
+            {
+                using (HttpClient client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+
+                    var payload = new { ids = idsToDelete };
+                    string jsonPayload = JsonSerializer.Serialize(payload);
+
+                    var request = new HttpRequestMessage
+                    {
+                        Method = HttpMethod.Delete,
+                        RequestUri = new Uri("https://ticket-v2-stg.omicrm.com/ticket/delete-many?lng=vi&utm_source=web"),
+                        Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json")
+                    };
+
+                    try
+                    {
+                        HttpResponseMessage response = await client.SendAsync(request);
+                        string resStr = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode && (resStr.Contains("\"payload\":true") || resStr.Contains("\"payload\": true") || resStr.Contains("\"status_code\":9999") || resStr.Contains("\"status_code\": 9999")))
+                        {
+                            // Cập nhật lại giao diện: Xóa các dòng bốc hơi khỏi bảng
+                            var dataSource = dgvTickets.DataSource as List<TicketItem>;
+                            if (dataSource != null)
+                            {
+                                dataSource.RemoveAll(t => idsToDelete.Contains(!string.IsNullOrEmpty(t._id) ? t._id : t.id));
+                                dgvTickets.DataSource = null;
+                                dgvTickets.DataSource = dataSource; // Gán lại để bảng tự Refresh
+                            }
+
+                            WriteLog("SUCCESS", "Xóa phiếu trên hệ thống", $"Đã xóa {idsToDelete.Count} phiếu. Danh sách ID: {string.Join(", ", idsToDelete)}");
+                            MessageBox.Show($"Tuyệt vời! Đã xóa thành công {idsToDelete.Count} phiếu khỏi hệ thống OmiCRM.", "Xóa Thành Công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            UpdateStatusCount();
+                        }
+                        else
+                        {
+                            MessageBox.Show($"Xóa thất bại!\nOmiCRM trả về: {resStr}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Lỗi kết nối mạng: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+            Cursor.Current = Cursors.Default;
         }
     }
 

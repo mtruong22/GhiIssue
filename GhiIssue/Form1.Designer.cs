@@ -40,11 +40,17 @@
             btnCreateTicket = new Button();
             dgvCreateTickets = new DataGridView();
             tabPage2 = new TabPage();
+            cbQuickTag = new ComboBox();
+            cbQuickGroup = new ComboBox();
+            label2 = new Label();
+            label1 = new Label();
             btnSearch = new Button();
             btnViewOpen = new Button();
             dgvTickets = new DataGridView();
             btnExecute = new Button();
             cboEmployees = new ComboBox();
+            tabOmicall = new TabPage();
+            tabZalo = new TabPage();
             statusStrip1 = new StatusStrip();
             lblStatusCount = new ToolStripStatusLabel();
             tabControl1.SuspendLayout();
@@ -60,8 +66,11 @@
             tabControl1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             tabControl1.Controls.Add(tabPage1);
             tabControl1.Controls.Add(tabPage2);
+            tabControl1.Controls.Add(tabOmicall);
+            tabControl1.Controls.Add(tabZalo);
             tabControl1.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             tabControl1.Location = new Point(12, 12);
+            tabControl1.Multiline = true;
             tabControl1.Name = "tabControl1";
             tabControl1.SelectedIndex = 0;
             tabControl1.Size = new Size(1224, 632);
@@ -179,6 +188,10 @@
             // 
             // tabPage2
             // 
+            tabPage2.Controls.Add(cbQuickTag);
+            tabPage2.Controls.Add(cbQuickGroup);
+            tabPage2.Controls.Add(label2);
+            tabPage2.Controls.Add(label1);
             tabPage2.Controls.Add(btnSearch);
             tabPage2.Controls.Add(btnViewOpen);
             tabPage2.Controls.Add(dgvTickets);
@@ -192,11 +205,51 @@
             tabPage2.Text = "ĐÓNG ISSUE";
             tabPage2.UseVisualStyleBackColor = true;
             // 
+            // cbQuickTag
+            // 
+            cbQuickTag.FlatStyle = FlatStyle.System;
+            cbQuickTag.FormattingEnabled = true;
+            cbQuickTag.Location = new Point(978, 7);
+            cbQuickTag.Name = "cbQuickTag";
+            cbQuickTag.Size = new Size(232, 23);
+            cbQuickTag.TabIndex = 8;
+            // 
+            // cbQuickGroup
+            // 
+            cbQuickGroup.DropDownWidth = 232;
+            cbQuickGroup.FlatStyle = FlatStyle.System;
+            cbQuickGroup.FormattingEnabled = true;
+            cbQuickGroup.Location = new Point(675, 7);
+            cbQuickGroup.Name = "cbQuickGroup";
+            cbQuickGroup.Size = new Size(224, 23);
+            cbQuickGroup.TabIndex = 7;
+            // 
+            // label2
+            // 
+            label2.AutoSize = true;
+            label2.ForeColor = Color.Crimson;
+            label2.Location = new Point(898, 13);
+            label2.Name = "label2";
+            label2.Size = new Size(74, 15);
+            label2.TabIndex = 6;
+            label2.Text = "⚡ LỌC TAG:";
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.ForeColor = Color.Crimson;
+            label1.Location = new Point(580, 13);
+            label1.Name = "label1";
+            label1.Size = new Size(89, 15);
+            label1.TabIndex = 5;
+            label1.Text = "⚡ LỌC NHÓM:";
+            // 
             // btnSearch
             // 
+            btnSearch.FlatStyle = FlatStyle.Flat;
             btnSearch.Location = new Point(6, 4);
             btnSearch.Name = "btnSearch";
-            btnSearch.Size = new Size(32, 26);
+            btnSearch.Size = new Size(32, 25);
             btnSearch.TabIndex = 4;
             btnSearch.Text = "🔍";
             btnSearch.UseVisualStyleBackColor = true;
@@ -204,9 +257,10 @@
             // 
             // btnViewOpen
             // 
-            btnViewOpen.Location = new Point(328, 7);
+            btnViewOpen.FlatStyle = FlatStyle.Flat;
+            btnViewOpen.Location = new Point(328, 3);
             btnViewOpen.Name = "btnViewOpen";
-            btnViewOpen.Size = new Size(139, 23);
+            btnViewOpen.Size = new Size(139, 25);
             btnViewOpen.TabIndex = 3;
             btnViewOpen.Text = "Xem phiếu đang mở";
             btnViewOpen.UseVisualStyleBackColor = true;
@@ -223,9 +277,10 @@
             // 
             // btnExecute
             // 
-            btnExecute.Location = new Point(247, 7);
+            btnExecute.FlatStyle = FlatStyle.Flat;
+            btnExecute.Location = new Point(247, 3);
             btnExecute.Name = "btnExecute";
-            btnExecute.Size = new Size(75, 23);
+            btnExecute.Size = new Size(75, 25);
             btnExecute.TabIndex = 1;
             btnExecute.Text = "ĐÓNG ISSUE";
             btnExecute.UseVisualStyleBackColor = true;
@@ -233,11 +288,32 @@
             // 
             // cboEmployees
             // 
+            cboEmployees.FlatStyle = FlatStyle.System;
             cboEmployees.FormattingEnabled = true;
+            cboEmployees.ImeMode = ImeMode.NoControl;
+            cboEmployees.ItemHeight = 15;
             cboEmployees.Location = new Point(44, 5);
             cboEmployees.Name = "cboEmployees";
             cboEmployees.Size = new Size(197, 23);
             cboEmployees.TabIndex = 0;
+            // 
+            // tabOmicall
+            // 
+            tabOmicall.Location = new Point(4, 24);
+            tabOmicall.Name = "tabOmicall";
+            tabOmicall.Size = new Size(1216, 604);
+            tabOmicall.TabIndex = 3;
+            tabOmicall.Text = "ĐA KÊNH OMICALL";
+            tabOmicall.UseVisualStyleBackColor = true;
+            // 
+            // tabZalo
+            // 
+            tabZalo.Location = new Point(4, 24);
+            tabZalo.Name = "tabZalo";
+            tabZalo.Size = new Size(1216, 604);
+            tabZalo.TabIndex = 2;
+            tabZalo.Text = "ZaloOA";
+            tabZalo.UseVisualStyleBackColor = true;
             // 
             // statusStrip1
             // 
@@ -263,11 +339,12 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v3.2";
+            Text = "Ghi Issue - v4.0";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();
             tabPage2.ResumeLayout(false);
+            tabPage2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)dgvTickets).EndInit();
             statusStrip1.ResumeLayout(false);
             statusStrip1.PerformLayout();
@@ -293,5 +370,11 @@
         private Button btnBulkEdit;
         private Button btnCreateTicket;
         private DataGridView dgvCreateTickets;
+        private TabPage tabZalo;
+        private TabPage tabOmicall;
+        private Label label1;
+        private ComboBox cbQuickTag;
+        private ComboBox cbQuickGroup;
+        private Label label2;
     }
 }

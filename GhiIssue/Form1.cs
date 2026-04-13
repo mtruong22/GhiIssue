@@ -1,18 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Drawing;
-using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.Diagnostics;
-using System.IO;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
-using ClosedXML.Excel;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 
 namespace GhiIssue
 {
@@ -1276,7 +1267,8 @@ namespace GhiIssue
             Label lblTo = new Label() { Left = 210, Top = currentY + 3, Text = "đến", AutoSize = true };
             DateTimePicker dtpEnd = new DateTimePicker() { Left = 245, Top = currentY, Width = 165, Format = DateTimePickerFormat.Short, Enabled = false }; currentY += 45;
 
-            cbTime.SelectedIndexChanged += (s, ev) => {
+            cbTime.SelectedIndexChanged += (s, ev) =>
+            {
                 DateTime now = DateTime.Now; dtpStart.Enabled = dtpEnd.Enabled = (cbTime.Text == "Tùy chọn ngày...");
                 if (cbTime.Text == "Hôm nay") { dtpStart.Value = now.Date; dtpEnd.Value = now.Date; }
                 else if (cbTime.Text == "Hôm qua") { dtpStart.Value = now.Date.AddDays(-1); dtpEnd.Value = now.Date.AddDays(-1); }
@@ -1297,7 +1289,8 @@ namespace GhiIssue
             CheckedListBox clbTags = new CheckedListBox() { Left = 20, Top = currentY, Width = 390, Height = 100, CheckOnClick = true };
             HashSet<string> checkedTagIds = new HashSet<string>();
 
-            Action loadTags = () => {
+            Action loadTags = () =>
+            {
                 clbTags.Items.Clear(); string kw = ConvertToUnSignStatic(txtSearchTag.Text == "🔍 Tìm Tag..." ? "" : txtSearchTag.Text);
                 var filtered = string.IsNullOrEmpty(kw) ? tagList.Take(150).ToList() : tagList.Where(x => x.UnsignedName.Contains(kw)).Take(150).ToList();
                 var checkedItemsList = tagList.Where(t => checkedTagIds.Contains(t.id)).ToList();
@@ -1323,7 +1316,8 @@ namespace GhiIssue
             searchForm.Height = currentY + 40; // Tự động kéo dài đáy Form ra một chút để không bị lẹm nút
             // =======================================================================
 
-            btnTopStats.Click += async (s, ev) => {
+            btnTopStats.Click += async (s, ev) =>
+            {
                 if ((dtpEnd.Value.Date - dtpStart.Value.Date).TotalDays > 31) { MessageBox.Show("Khoảng thời gian quá lớn!", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
                 long startMs = new DateTimeOffset(dtpStart.Value.Date).ToUnixTimeMilliseconds(); long endMs = new DateTimeOffset(dtpEnd.Value.Date.AddDays(1).AddTicks(-1)).ToUnixTimeMilliseconds();
                 Cursor.Current = Cursors.WaitCursor; btnTopStats.Text = "Đang thống kê..."; btnTopStats.Enabled = false;
@@ -1374,12 +1368,14 @@ namespace GhiIssue
                             dgvTags.DataBindingComplete += (sender_bind, e_bind) => { if (dgvTags.Columns.Contains("ID")) dgvTags.Columns["ID"].Visible = false; };
 
                             pageGroup.Controls.Add(dgvGroups); pageTag.Controls.Add(dgvTags); tabLb.Controls.Add(pageGroup); tabLb.Controls.Add(pageTag); lbForm.Controls.Add(tabLb);
-                            dgvGroups.CellDoubleClick += (sender_dgv, e_dgv) => {
+                            dgvGroups.CellDoubleClick += (sender_dgv, e_dgv) =>
+                            {
                                 if (e_dgv.RowIndex < 0) return; string selGroup = dgvGroups.Rows[e_dgv.RowIndex].Cells["Nhóm_Lỗi"].Value.ToString();
                                 var filtered = allTickets.Where(t => t.group_name == selGroup).ToList(); FormatTicketDisplay(filtered, null);
                                 dgvTickets.DataSource = null; dgvTickets.DataSource = filtered; UpdateQuickFilter(filtered); UpdateStatusCount(); lbForm.DialogResult = DialogResult.OK; searchForm.DialogResult = DialogResult.Abort;
                             };
-                            dgvTags.CellDoubleClick += (sender_dgv, e_dgv) => {
+                            dgvTags.CellDoubleClick += (sender_dgv, e_dgv) =>
+                            {
                                 if (e_dgv.RowIndex < 0) return; string selTagId = dgvTags.Rows[e_dgv.RowIndex].Cells["ID"].Value.ToString();
                                 var filtered = allTickets.Where(t => t.tags != null && t.tags.Any(tg => tg.ToString().Contains(selTagId))).ToList(); FormatTicketDisplay(filtered, null);
                                 dgvTickets.DataSource = null; dgvTickets.DataSource = filtered; UpdateQuickFilter(filtered); UpdateStatusCount(); lbForm.DialogResult = DialogResult.OK; searchForm.DialogResult = DialogResult.Abort;
@@ -2922,6 +2918,9 @@ namespace GhiIssue
         // =========================================================================
         // POP-UP CHỈNH SỬA PHIẾU TÍCH HỢP TÌM KIẾM CHO TAG VÀ NGƯỜI XỬ LÝ
         // =========================================================================
+        // =========================================================================
+        // POP-UP CHỈNH SỬA PHIẾU (ĐÃ THÊM Ô MÔ TẢ CHI TIẾT)
+        // =========================================================================
         private void DgvTickets_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0) return;
@@ -2931,7 +2930,7 @@ namespace GhiIssue
             Form popup = new Form()
             {
                 Width = 550,
-                Height = 650,
+                Height = 750, // 🌟 Kéo dài Form ra thêm 100px để chứa ô Mô tả
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 Text = "Chỉnh sửa phiếu: " + ticket.unique_id,
                 StartPosition = FormStartPosition.CenterScreen,
@@ -2946,7 +2945,13 @@ namespace GhiIssue
             TextBox txtName = new TextBox() { Left = 20, Top = currentY, Width = 490, Text = ticket.name };
             currentY += 35;
 
-            // 2. Trạng thái & Lý do
+            // 🌟 2. MÔ TẢ CHI TIẾT (Ô nhập liệu nhiều dòng)
+            Label lblDesc = new Label() { Left = 20, Top = currentY, Text = "Mô tả chi tiết:", AutoSize = true };
+            currentY += 20;
+            TextBox txtDesc = new TextBox() { Left = 20, Top = currentY, Width = 490, Height = 70, Multiline = true, ScrollBars = ScrollBars.Vertical, Text = ticket.MoTa };
+            currentY += 85;
+
+            // 3. Trạng thái & Lý do
             Label lblStatus = new Label() { Left = 20, Top = currentY, Text = "Trạng thái:", AutoSize = true };
             Label lblReason = new Label() { Left = 200, Top = currentY, Text = "Lý do (Nếu chuyển trạng thái):", AutoSize = true };
             currentY += 20;
@@ -2962,7 +2967,7 @@ namespace GhiIssue
             TextBox txtReason = new TextBox() { Left = 200, Top = currentY, Width = 310, Text = "" };
             currentY += 35;
 
-            // 3. Đổi Người xử lý (CÓ THANH TÌM KIẾM)
+            // 4. Đổi Người xử lý (CÓ THANH TÌM KIẾM)
             Label lblAssignee = new Label() { Left = 20, Top = currentY, Text = "Người xử lý:", AutoSize = true };
             TextBox txtSearchAssignee = new TextBox() { Left = 250, Top = currentY - 3, Width = 260, Text = "🔍 Tìm người..." };
             txtSearchAssignee.GotFocus += (s, ev) => { if (txtSearchAssignee.Text == "🔍 Tìm người...") txtSearchAssignee.Text = ""; };
@@ -2974,7 +2979,7 @@ namespace GhiIssue
             {
                 foreach (var a in ticket.assignee_contact_ids)
                 {
-                    string aId = a.ValueKind == JsonValueKind.Object && a.TryGetProperty("id", out var idProp) ? idProp.GetString() : a.ToString();
+                    string aId = a.ValueKind == System.Text.Json.JsonValueKind.Object && a.TryGetProperty("id", out var idProp) ? idProp.GetString() : a.ToString();
                     checkedAssignees.Add(aId);
                 }
             }
@@ -2996,7 +3001,7 @@ namespace GhiIssue
             txtSearchAssignee.TextChanged += (s, ev) => loadAssignees();
             currentY += 110;
 
-            // 4. Đổi Tag (CÓ THANH TÌM KIẾM CHỐNG LAG)
+            // 5. Đổi Tag (CÓ THANH TÌM KIẾM CHỐNG LAG)
             Label lblTag = new Label() { Left = 20, Top = currentY, Text = "Tags:", AutoSize = true };
             TextBox txtSearchTag = new TextBox() { Left = 250, Top = currentY - 3, Width = 260, Text = "🔍 Tìm Tag..." };
             txtSearchTag.GotFocus += (s, ev) => { if (txtSearchTag.Text == "🔍 Tìm Tag...") txtSearchTag.Text = ""; };
@@ -3008,7 +3013,7 @@ namespace GhiIssue
             {
                 foreach (var t in ticket.tags)
                 {
-                    string tId = t.ValueKind == JsonValueKind.Object && t.TryGetProperty("id", out var idProp) ? idProp.GetString() : t.ToString();
+                    string tId = t.ValueKind == System.Text.Json.JsonValueKind.Object && t.TryGetProperty("id", out var idProp) ? idProp.GetString() : t.ToString();
                     checkedTags.Add(tId);
                 }
             }
@@ -3036,6 +3041,7 @@ namespace GhiIssue
             Button btnSave = new Button() { Text = "Lưu Cập Nhật", Left = 215, Top = currentY, Width = 120, Height = 35, BackColor = Color.LightGreen, FlatStyle = FlatStyle.Flat };
 
             popup.Controls.Add(lblName); popup.Controls.Add(txtName);
+            popup.Controls.Add(lblDesc); popup.Controls.Add(txtDesc); // 🌟 Gắn ô Mô tả vào giao diện
             popup.Controls.Add(lblStatus); popup.Controls.Add(cbStatus);
             popup.Controls.Add(lblReason); popup.Controls.Add(txtReason);
             popup.Controls.Add(lblAssignee); popup.Controls.Add(txtSearchAssignee); popup.Controls.Add(clbAssignees);
@@ -3046,6 +3052,7 @@ namespace GhiIssue
             btnSave.Click += async (s, ev) =>
             {
                 string newName = txtName.Text.Trim();
+                string newDesc = txtDesc.Text.Trim(); // 🌟 Lấy dữ liệu Mô tả mới
                 int newStatus = (int)cbStatus.SelectedValue;
                 if (string.IsNullOrEmpty(newName)) return;
 
@@ -3062,10 +3069,12 @@ namespace GhiIssue
                     var selectedTags = checkedTags.ToArray();
                     string realCatId = !string.IsNullOrEmpty(ticket.category_id) ? ticket.category_id : "65a4b914c08b463df237dcec";
 
-                    var updateContent = new StringContent(JsonSerializer.Serialize(new
+                    // 🌟 Bơm thêm description vào Payload update (Tự động bọc thẻ HTML)
+                    var updateContent = new StringContent(System.Text.Json.JsonSerializer.Serialize(new
                     {
                         id = realId,
                         name = newName,
+                        description = string.IsNullOrEmpty(newDesc) ? "" : $"<div style=\"font-size: 15px;\">{newDesc}</div>",
                         category_id = realCatId,
                         current_type = 0,
                         assignee_contact_ids = selectedAssignees,
@@ -3079,7 +3088,7 @@ namespace GhiIssue
                     if (newStatus != ticket.current_status || !string.IsNullOrEmpty(txtReason.Text.Trim()))
                     {
                         string reasonMsg = string.IsNullOrEmpty(txtReason.Text.Trim()) ? "Cập nhật qua Tool" : txtReason.Text.Trim();
-                        var statusContent = new StringContent(JsonSerializer.Serialize(new { id = realId, status = newStatus, message = reasonMsg }), Encoding.UTF8, "application/json");
+                        var statusContent = new StringContent(System.Text.Json.JsonSerializer.Serialize(new { id = realId, status = newStatus, message = reasonMsg }), Encoding.UTF8, "application/json");
                         var resStatus = await client.PutAsync("https://ticket-v2-stg.omicrm.com/ticket/status/update?lng=vi&utm_source=web", statusContent);
                         successStatus = resStatus.IsSuccessStatusCode;
                     }
@@ -3098,7 +3107,7 @@ namespace GhiIssue
                     }
                 }
             };
-            if (popup.ShowDialog() == DialogResult.OK) BtnViewOpen_Click(null, null);
+            if (popup.ShowDialog() == DialogResult.OK) BtnViewOpen_Click(null, null); // Tự động load lại bảng để thấy chữ mới
         }
 
         private void btnSearch_Click(object sender, EventArgs e)
@@ -3118,6 +3127,7 @@ namespace GhiIssue
             if (dgvTickets.Columns.Contains("unique_id")) { dgvTickets.Columns["unique_id"].HeaderText = "ID Phiếu"; dgvTickets.Columns["unique_id"].DisplayIndex = 0; dgvTickets.Columns["unique_id"].Width = 80; }
             if (dgvTickets.Columns.Contains("group_name")) { dgvTickets.Columns["group_name"].HeaderText = "Nhóm"; dgvTickets.Columns["group_name"].DisplayIndex = 1; dgvTickets.Columns["group_name"].Width = 120; }
             if (dgvTickets.Columns.Contains("name")) { dgvTickets.Columns["name"].HeaderText = "Tên Phiếu"; dgvTickets.Columns["name"].DisplayIndex = 2; }
+            if (dgvTickets.Columns.Contains("MoTa")) { dgvTickets.Columns["MoTa"].HeaderText = "Mô tả chi tiết"; dgvTickets.Columns["MoTa"].DisplayIndex = 2; }
             if (dgvTickets.Columns.Contains("NgayTao")) { dgvTickets.Columns["NgayTao"].HeaderText = "Ngày Tạo"; dgvTickets.Columns["NgayTao"].DisplayIndex = 3; dgvTickets.Columns["NgayTao"].Width = 130; }
             if (dgvTickets.Columns.Contains("TrangThaiHienThi")) { dgvTickets.Columns["TrangThaiHienThi"].HeaderText = "Trạng Thái"; dgvTickets.Columns["TrangThaiHienThi"].DisplayIndex = 4; dgvTickets.Columns["TrangThaiHienThi"].Width = 140; }
             if (dgvTickets.Columns.Contains("NguoiNhan")) { dgvTickets.Columns["NguoiNhan"].HeaderText = "Người Xử Lý"; dgvTickets.Columns["NguoiNhan"].DisplayIndex = 5; }
@@ -3126,6 +3136,7 @@ namespace GhiIssue
             // Ẩn toàn bộ các cột dữ liệu rác của hệ thống
             if (dgvTickets.Columns.Contains("tags")) dgvTickets.Columns["tags"].Visible = false;
             if (dgvTickets.Columns.Contains("assignee_contact_ids")) dgvTickets.Columns["assignee_contact_ids"].Visible = false;
+            if (dgvTickets.Columns.Contains("description")) dgvTickets.Columns["description"].Visible = false; // Ẩn cột chứa mã HTML rác
             if (dgvTickets.Columns.Contains("_id")) dgvTickets.Columns["_id"].Visible = false;
             if (dgvTickets.Columns.Contains("id")) dgvTickets.Columns["id"].Visible = false;
             if (dgvTickets.Columns.Contains("current_status")) dgvTickets.Columns["current_status"].Visible = false;
@@ -3425,33 +3436,32 @@ namespace GhiIssue
             }
 
             // ==============================================================================
-            // 🌟 DANH SÁCH TOÀN BỘ CÁC TRƯỜNG CÓ THỂ XUẤT (Gồm cả cột chính và cột ẩn)
-            // Cấu trúc: { Tên_Biến, Tên_Hiển_Thị, Có_Tick_Sẵn_Hay_Không }
+            // 🌟 DANH SÁCH CỘT XUẤT EXCEL (Viết dạng Tuple siêu gọn gàng, dễ nhìn)
             // ==============================================================================
             var availableColumns = new[]
             {
-                // 1. CÁC CỘT CHÍNH (Tick sẵn mặc định theo yêu cầu của bạn)
-                new { Prop = "unique_id", Name = "ID Phiếu", IsChecked = true },
-                new { Prop = "group_name", Name = "Nhóm", IsChecked = true },
-                new { Prop = "name", Name = "Tên Phiếu", IsChecked = true },
-                new { Prop = "NgayTao", Name = "Ngày Tạo", IsChecked = true },
-                new { Prop = "NguoiNhan", Name = "Người Xử Lý", IsChecked = true },
-                new { Prop = "TrangThaiHienThi", Name = "Trạng Thái", IsChecked = true },
-                new { Prop = "TenTag", Name = "Danh sách Tag", IsChecked = true },
+                // -- CÁC CỘT CHÍNH (Sẽ được tick mặc định) --
+                (Prop: "unique_id",        Name: "ID Phiếu",                 IsChecked: true),
+                (Prop: "group_name",       Name: "Nhóm",                     IsChecked: true),
+                (Prop: "name",             Name: "Tên Phiếu",                IsChecked: true),
+                (Prop: "MoTa",             Name: "Mô tả chi tiết",           IsChecked: true),
+                (Prop: "NgayTao",          Name: "Ngày Tạo",                 IsChecked: true),
+                (Prop: "NguoiNhan",        Name: "Người Xử Lý",              IsChecked: true),
+                (Prop: "TrangThaiHienThi", Name: "Trạng Thái",               IsChecked: true),
+                (Prop: "TenTag",           Name: "Danh sách Tag",            IsChecked: true),
 
-                // 2. CÁC CỘT PHỤ/ẨN (Không tick sẵn, user có thể tự tick thêm nếu cần)
-                new { Prop = "id", Name = "Mã ID hệ thống (Ẩn)", IsChecked = false },
-                new { Prop = "current_status", Name = "Mã Trạng thái gốc (Số)", IsChecked = false },
-                new { Prop = "category_id", Name = "Mã Chủ đề (Category ID)", IsChecked = false },
-                new { Prop = "created_date", Name = "Mã thời gian Unix gốc", IsChecked = false }
+                // -- CÁC CỘT PHỤ HỆ THỐNG (Không tick sẵn) --
+                (Prop: "id",               Name: "Mã ID hệ thống (Ẩn)",      IsChecked: false),
+                (Prop: "current_status",   Name: "Mã Trạng thái gốc (Số)",   IsChecked: false),
+                (Prop: "category_id",      Name: "Mã Chủ đề (Category ID)",  IsChecked: false),
+                (Prop: "created_date",     Name: "Mã thời gian Unix gốc",    IsChecked: false)
             };
 
-            // Kéo dài Popup ra để chứa thoải mái các ô tick
             Form popup = new Form() { Width = 380, Height = 500, Text = "Tuỳ chọn Xuất Excel", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
             Label lbl = new Label() { Text = "Vui lòng tick chọn các trường bạn muốn xuất:", Left = 20, Top = 20, AutoSize = true };
             CheckedListBox clbColumns = new CheckedListBox() { Left = 20, Top = 50, Width = 320, Height = 320, CheckOnClick = true };
 
-            // Nạp dữ liệu vào bảng chọn và thiết lập trạng thái Tick sẵn
+            // Nạp danh sách vào giao diện
             foreach (var col in availableColumns)
             {
                 var item = new ColumnExportItem { PropertyName = col.Prop, HeaderText = col.Name };
@@ -3478,7 +3488,7 @@ namespace GhiIssue
                         {
                             var worksheet = workbook.Worksheets.Add("DuLieuPhiếu");
 
-                            // 1. VẼ DÒNG TIÊU ĐỀ
+                            // Vẽ Header
                             for (int i = 0; i < selectedColumns.Count; i++)
                             {
                                 var cell = worksheet.Cell(1, i + 1);
@@ -3490,7 +3500,7 @@ namespace GhiIssue
                                 cell.Style.Border.OutsideBorder = ClosedXML.Excel.XLBorderStyleValues.Thin;
                             }
 
-                            // 2. BƠM DỮ LIỆU
+                            // Đổ dữ liệu
                             var dataSource = dgvTickets.DataSource as List<TicketItem>;
                             int rowIdx = 2;
 
@@ -3509,7 +3519,6 @@ namespace GhiIssue
                                 rowIdx++;
                             }
 
-                            // 3. CĂN CHỈNH TỰ ĐỘNG
                             worksheet.Columns().AdjustToContents();
                             workbook.SaveAs(sfd.FileName);
                         }
@@ -3604,6 +3613,29 @@ namespace GhiIssue
                 return DateTimeOffset.FromUnixTimeMilliseconds(created_date).LocalDateTime.ToString("dd/MM/yyyy HH:mm");
             }
         }
+
+        [System.ComponentModel.Browsable(false)]
+        public string description { get; set; } // Trường gốc từ API
+
+        // 🌟 THÊM ĐOẠN NÀY: Tự động tẩy sạch thẻ HTML để hiện chữ thuần túy
+        // 🌟 TẨY SẠCH 100% HTML MÃ HÓA TỪ OMICRM
+        public string MoTa
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(description)) return "";
+
+                // 1. Giải mã: Biến "&lt;" thành "<", "&quot;" thành """
+                string decodedHTML = System.Net.WebUtility.HtmlDecode(description);
+
+                // 2. Xóa sạch mọi thẻ HTML (<...>)
+                string cleanText = System.Text.RegularExpressions.Regex.Replace(decodedHTML, "<.*?>", " ");
+
+                // 3. Xóa các khoảng trắng thừa do thẻ HTML để lại cho gọn gàng
+                return System.Text.RegularExpressions.Regex.Replace(cleanText, @"\s+", " ").Trim();
+            }
+        }
+
         // ==========================================================
 
         [System.ComponentModel.Browsable(false)] // TỰ ĐỘNG ẨN CỘT NÀY TRÊN BẢNG

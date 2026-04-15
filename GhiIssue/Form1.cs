@@ -187,7 +187,7 @@ namespace GhiIssue
 
         public Form1()
         {
-            this.Text = "Ghi Issue v4.0";
+            this.Text = "Ghi Issue v4.1";
 
             if (!Directory.Exists(Application.StartupPath)) Directory.CreateDirectory(Application.StartupPath);
 
@@ -1084,7 +1084,7 @@ namespace GhiIssue
         }
 
         // =========================================================================
-        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V4.0 FIX LỖI MERGED CELL)
+        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V4.1 FIX LỖI MERGED CELL)
         // =========================================================================
         private async Task LoadDefaultTitlesAsync()
         {
@@ -1552,7 +1552,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "4.0"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
+            string currentVersion = "4.1"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -1840,8 +1840,22 @@ namespace GhiIssue
                 {
                     if (!defaultTitles.Any(t => t.Title.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
                     {
-                        defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
-                        finalValue = typedText;
+                        // -------------------------------------------------------------
+                        // --- TẠM ẨN: KHÔNG LƯU DỮ LIỆU NHẬP TAY LẠ ---
+                        // defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
+                        // finalValue = typedText;
+
+                        // --- CODE MỚI: BÁO LỖI VÀ XÓA CHỮ ---
+                        MessageBox.Show("Không tìm thấy nội dung trong template!", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        cb.Text = ""; // Xóa sạch chữ lạ
+                        finalValue = null; // Trả ô về trạng thái rỗng
+                        // -------------------------------------------------------------
+                    }
+                    else
+                    {
+                        // Nếu gõ đúng 1 phần chữ, ép nó lấy đúng chữ chuẩn của template để lưu
+                        var match = defaultTitles.FirstOrDefault(t => t.Title.Equals(typedText, StringComparison.OrdinalIgnoreCase));
+                        if (match != null) finalValue = match.Title;
                     }
                 }
                 else if (colName == "colTag")
@@ -2001,10 +2015,13 @@ namespace GhiIssue
                 {
                     if (!defaultTitles.Any(t => t.Title.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
                     {
+                        // -------------------------------------------------------------
+                        // --- TẠM ẨN: KHÔNG CHO THÊM VÀO LIST MẶC ĐỊNH ---
                         // Tuyệt chiêu: Ngắt thông báo để Grid không bị reset chữ
-                        defaultTitles.RaiseListChangedEvents = false;
-                        defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
-                        defaultTitles.RaiseListChangedEvents = true; // Bật lại ngay sau khi chèn xong
+                        //defaultTitles.RaiseListChangedEvents = false;
+                        //defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = typedText });
+                        //defaultTitles.RaiseListChangedEvents = true; // Bật lại ngay sau khi chèn xong
+                        return;
                     }
                 }
                 else if (colName == "colTag")
@@ -2078,10 +2095,18 @@ namespace GhiIssue
                 var cleanList = defaultTitles.Where(t => t.Group != "Khác (Nhập tay)").ToList();
                 var ds = string.IsNullOrEmpty(searchKeyword) ? cleanList : cleanList.Where(x => x.UnsignedTitle.Contains(searchKeyword)).ToList();
 
-                if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Title.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
-                    ds.Insert(0, new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
-                else if (ds.Count == 0) ds.Add(new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
+                // -------------------------------------------------------------
+                // --- TẠM ẨN: KHÔNG TỰ ĐỘNG TẠO ITEM "KHÁC" KHI ĐANG GÕ TÌM ---
+                // if (!string.IsNullOrEmpty(keyword) && !ds.Any(x => x.Title.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
+                //     ds.Insert(0, new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
+                // else if (ds.Count == 0) ds.Add(new PredefinedTitle { Title = keyword, Group = "Khác (Nhập tay)" });
+                // -------------------------------------------------------------
 
+                // 🌟 FIX LỖI CRASH: Nếu gõ sai không ra kết quả nào, ép vào 1 dòng để ComboBox không bị lỗi
+                if (ds.Count == 0)
+                {
+                    ds.Add(new PredefinedTitle { Title = "Không tìm thấy template...", Group = "Khác" });
+                }
                 cb.DataSource = ds; cb.DisplayMember = "Title"; cb.ValueMember = "Title"; dataSource = ds;
             }
             else if (colName == "colTag")
@@ -2108,7 +2133,9 @@ namespace GhiIssue
             else cb.DroppedDown = false;
 
             cb.Text = keyword;
-            cb.SelectionStart = cursorPos; // <-- TRẢ LẠI CHÍNH XÁC VỊ TRÍ CON TRỎ CHUỘT
+            //cb.SelectionStart = cursorPos; // <-- TRẢ LẠI CHÍNH XÁC VỊ TRÍ CON TRỎ CHUỘT
+            // FIX LỖI CRASH: Rào lại vị trí con trỏ, không cho vượt quá độ dài chuỗi
+            cb.SelectionStart = Math.Min(cursorPos, cb.Text.Length);
             cb.TextUpdate += Cb_TextUpdate;
             Cursor.Current = Cursors.Default;
         }
@@ -2554,12 +2581,15 @@ namespace GhiIssue
                             }
                             else
                             {
-                                if (!defaultTitles.Any(t => t.Title.Equals(cellText, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = cellText });
-                                }
-                                targetCell.Value = cellText;
-                                dgvCreateTickets.Rows[startRow].Cells["colGroup"].Value = "Khác (Nhập tay)";
+                                // -------------------------------------------------------------
+                                // --- TẠM ẨN: KHÔNG CHO PASTE CHỮ LẠ VÀO ---
+                                //if (!defaultTitles.Any(t => t.Title.Equals(cellText, StringComparison.OrdinalIgnoreCase)))
+                                //{
+                                //    defaultTitles.Insert(0, new PredefinedTitle { Group = "Khác (Nhập tay)", Title = cellText });
+                                //}
+                                //targetCell.Value = cellText;
+                                //dgvCreateTickets.Rows[startRow].Cells["colGroup"].Value = "Khác (Nhập tay)";
+                                continue;
                             }
                         }
                         else if (colName == "colDesc") targetCell.Value = cellText;

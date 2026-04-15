@@ -339,7 +339,7 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v4.0";
+            Text = "Ghi Issue - v4.1";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();

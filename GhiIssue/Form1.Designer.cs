@@ -73,7 +73,7 @@
             tabControl1.Multiline = true;
             tabControl1.Name = "tabControl1";
             tabControl1.SelectedIndex = 0;
-            tabControl1.Size = new Size(1224, 632);
+            tabControl1.Size = new Size(1240, 737);
             tabControl1.TabIndex = 0;
             // 
             // tabPage1
@@ -87,7 +87,7 @@
             tabPage1.Location = new Point(4, 24);
             tabPage1.Name = "tabPage1";
             tabPage1.Padding = new Padding(3);
-            tabPage1.Size = new Size(1216, 604);
+            tabPage1.Size = new Size(1232, 709);
             tabPage1.TabIndex = 0;
             tabPage1.Text = "TẠO PHIẾU";
             tabPage1.UseVisualStyleBackColor = true;
@@ -99,7 +99,7 @@
             btnToggleCategory.Cursor = Cursors.Hand;
             btnToggleCategory.FlatAppearance.BorderSize = 0;
             btnToggleCategory.FlatStyle = FlatStyle.Flat;
-            btnToggleCategory.Location = new Point(130, 475);
+            btnToggleCategory.Location = new Point(130, 580);
             btnToggleCategory.Name = "btnToggleCategory";
             btnToggleCategory.Size = new Size(120, 120);
             btnToggleCategory.TabIndex = 8;
@@ -113,7 +113,7 @@
             btnTheme.Cursor = Cursors.Hand;
             btnTheme.FlatAppearance.BorderSize = 0;
             btnTheme.FlatStyle = FlatStyle.Flat;
-            btnTheme.Location = new Point(6, 475);
+            btnTheme.Location = new Point(6, 580);
             btnTheme.Name = "btnTheme";
             btnTheme.Size = new Size(118, 57);
             btnTheme.TabIndex = 7;
@@ -128,7 +128,7 @@
             btnSyncToken.FlatAppearance.BorderSize = 0;
             btnSyncToken.FlatStyle = FlatStyle.Flat;
             btnSyncToken.Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            btnSyncToken.Location = new Point(531, 475);
+            btnSyncToken.Location = new Point(539, 580);
             btnSyncToken.Name = "btnSyncToken";
             btnSyncToken.Size = new Size(120, 120);
             btnSyncToken.TabIndex = 6;
@@ -143,7 +143,7 @@
             btnBulkEdit.FlatAppearance.BorderSize = 0;
             btnBulkEdit.FlatStyle = FlatStyle.Flat;
             btnBulkEdit.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            btnBulkEdit.Location = new Point(7, 538);
+            btnBulkEdit.Location = new Point(7, 643);
             btnBulkEdit.Name = "btnBulkEdit";
             btnBulkEdit.Size = new Size(117, 57);
             btnBulkEdit.TabIndex = 3;
@@ -159,7 +159,7 @@
             btnCreateTicket.FlatStyle = FlatStyle.Flat;
             btnCreateTicket.Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             btnCreateTicket.ForeColor = SystemColors.ControlText;
-            btnCreateTicket.Location = new Point(1090, 473);
+            btnCreateTicket.Location = new Point(1106, 578);
             btnCreateTicket.Name = "btnCreateTicket";
             btnCreateTicket.Size = new Size(120, 120);
             btnCreateTicket.TabIndex = 2;
@@ -183,7 +183,7 @@
             dgvCreateTickets.Location = new Point(6, 5);
             dgvCreateTickets.Name = "dgvCreateTickets";
             dgvCreateTickets.RowTemplate.Height = 32;
-            dgvCreateTickets.Size = new Size(1204, 464);
+            dgvCreateTickets.Size = new Size(1220, 569);
             dgvCreateTickets.TabIndex = 0;
             // 
             // tabPage2
@@ -200,35 +200,38 @@
             tabPage2.Location = new Point(4, 24);
             tabPage2.Name = "tabPage2";
             tabPage2.Padding = new Padding(3);
-            tabPage2.Size = new Size(1216, 604);
+            tabPage2.Size = new Size(1232, 709);
             tabPage2.TabIndex = 1;
             tabPage2.Text = "ĐÓNG ISSUE";
             tabPage2.UseVisualStyleBackColor = true;
             // 
             // cbQuickTag
             // 
+            cbQuickTag.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             cbQuickTag.FlatStyle = FlatStyle.System;
             cbQuickTag.FormattingEnabled = true;
-            cbQuickTag.Location = new Point(978, 7);
+            cbQuickTag.Location = new Point(994, 7);
             cbQuickTag.Name = "cbQuickTag";
             cbQuickTag.Size = new Size(232, 23);
             cbQuickTag.TabIndex = 8;
             // 
             // cbQuickGroup
             // 
+            cbQuickGroup.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             cbQuickGroup.DropDownWidth = 232;
             cbQuickGroup.FlatStyle = FlatStyle.System;
             cbQuickGroup.FormattingEnabled = true;
-            cbQuickGroup.Location = new Point(675, 7);
+            cbQuickGroup.Location = new Point(684, 7);
             cbQuickGroup.Name = "cbQuickGroup";
             cbQuickGroup.Size = new Size(224, 23);
             cbQuickGroup.TabIndex = 7;
             // 
             // label2
             // 
+            label2.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label2.AutoSize = true;
             label2.ForeColor = Color.Crimson;
-            label2.Location = new Point(898, 13);
+            label2.Location = new Point(914, 13);
             label2.Name = "label2";
             label2.Size = new Size(74, 15);
             label2.TabIndex = 6;
@@ -236,9 +239,10 @@
             // 
             // label1
             // 
+            label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.ForeColor = Color.Crimson;
-            label1.Location = new Point(580, 13);
+            label1.Location = new Point(589, 13);
             label1.Name = "label1";
             label1.Size = new Size(89, 15);
             label1.TabIndex = 5;
@@ -272,7 +276,7 @@
             dgvTickets.Location = new Point(6, 36);
             dgvTickets.Name = "dgvTickets";
             dgvTickets.RowTemplate.Height = 32;
-            dgvTickets.Size = new Size(1204, 517);
+            dgvTickets.Size = new Size(1220, 622);
             dgvTickets.TabIndex = 2;
             // 
             // btnExecute
@@ -301,7 +305,7 @@
             // 
             tabOmicall.Location = new Point(4, 24);
             tabOmicall.Name = "tabOmicall";
-            tabOmicall.Size = new Size(1216, 604);
+            tabOmicall.Size = new Size(1232, 709);
             tabOmicall.TabIndex = 3;
             tabOmicall.Text = "ĐA KÊNH OMICALL";
             tabOmicall.UseVisualStyleBackColor = true;
@@ -310,7 +314,7 @@
             // 
             tabZalo.Location = new Point(4, 24);
             tabZalo.Name = "tabZalo";
-            tabZalo.Size = new Size(1216, 604);
+            tabZalo.Size = new Size(1232, 709);
             tabZalo.TabIndex = 2;
             tabZalo.Text = "ZaloOA";
             tabZalo.UseVisualStyleBackColor = true;
@@ -318,9 +322,9 @@
             // statusStrip1
             // 
             statusStrip1.Items.AddRange(new ToolStripItem[] { lblStatusCount });
-            statusStrip1.Location = new Point(0, 634);
+            statusStrip1.Location = new Point(0, 739);
             statusStrip1.Name = "statusStrip1";
-            statusStrip1.Size = new Size(1248, 22);
+            statusStrip1.Size = new Size(1264, 22);
             statusStrip1.TabIndex = 7;
             statusStrip1.Text = "statusStrip1";
             // 
@@ -334,12 +338,12 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1248, 656);
+            ClientSize = new Size(1264, 761);
             Controls.Add(statusStrip1);
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v4.1";
+            Text = "Ghi Issue - v4.3";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();

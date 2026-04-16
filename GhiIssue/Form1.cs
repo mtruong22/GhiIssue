@@ -172,6 +172,8 @@ namespace GhiIssue
         private List<TagItem> tagList = new List<TagItem>();
 
         private BindingList<PredefinedTitle> defaultTitles = new BindingList<PredefinedTitle>();
+        private BindingList<ComboItem> defaultTypeIssues = new BindingList<ComboItem>();
+        private BindingList<ComboItem> defaultTechActions = new BindingList<ComboItem>();
 
         private string defaultAssigneeId = "";
         private HashSet<string> recentlyClosedTicketIds = new HashSet<string>();
@@ -187,7 +189,7 @@ namespace GhiIssue
 
         public Form1()
         {
-            this.Text = "Ghi Issue v4.1";
+            this.Text = "Ghi Issue v4.3";
 
             if (!Directory.Exists(Application.StartupPath)) Directory.CreateDirectory(Application.StartupPath);
 
@@ -261,7 +263,8 @@ namespace GhiIssue
                 dgvCreateTickets.CurrentCellDirtyStateChanged += DgvCreateTickets_CurrentCellDirtyStateChanged;
                 dgvCreateTickets.EditingControlShowing += DgvCreateTickets_EditingControlShowing;
                 dgvCreateTickets.CellValidating += DgvCreateTickets_CellValidating;
-                dgvCreateTickets.CellEndEdit += (s, e) => SaveDraft();
+                //dgvCreateTickets.CellEndEdit += (s, e) => SaveDraft();
+                dgvCreateTickets.CellEndEdit += DgvCreateTickets_CellEndEdit;
                 dgvCreateTickets.RowsRemoved += (s, e) => SaveDraft();
 
                 // Kích hoạt đếm dòng
@@ -379,6 +382,38 @@ namespace GhiIssue
                     ticket.TenTag = string.Join(", ", tNames);
                 }
                 else ticket.TenTag = "";
+                // 🌟 TỰ ĐỘNG DÒ TYPE ISSUE DỰA TRÊN TÊN PHIẾU
+                var match = defaultTitles.FirstOrDefault(t => t.Title.Equals(ticket.name?.Trim(), StringComparison.OrdinalIgnoreCase));
+                ticket.TypeIssue = match != null ? match.TypeIssue : "";
+                ticket.group_name = (match != null && !string.IsNullOrEmpty(match.Group) && match.Group != "Khác (Nhập tay)") ? match.Group : "Khác";
+                // 🌟 BÓC TÁCH THỜI GIAN TỪ THẺ HTML TÀNG HÌNH
+                // 🌟 BÓC TÁCH THỜI GIAN THEO CHUẨN MỚI
+                // 🌟 BÓC TÁCH THỜI GIAN LINH HOẠT TỪ MÔ TẢ OMiCRM
+                if (!string.IsNullOrEmpty(ticket.description))
+                {
+                    // Regex chấp nhận khoảng trắng bất kỳ: [TG: 08:30 - 09:00] hoặc [TG:08:30-09:00]
+                    var regex = new System.Text.RegularExpressions.Regex(@"\[TG:\s*(.*?)\s*-\s*(.*?)\]");
+                    var m = regex.Match(ticket.description);
+                    if (m.Success)
+                    {
+                        ticket.ThoiGianNhan = m.Groups[1].Value.Trim();
+                        ticket.ThoiGianXong = m.Groups[2].Value.Trim();
+
+                        // Tẩy sạch thẻ thời gian ra khỏi mô tả để màn hình nhìn đẹp
+                        ticket.description = ticket.description.Replace(m.Value, "").Replace("<br><br>", "").Trim();
+                    }
+                }
+                // 🌟 BÓC TÁCH THỜI GIAN TỪ MÔ TẢ RA CỘT RIÊNG
+                //var regex = new System.Text.RegularExpressions.Regex(@"\[TG: (.*?) - (.*?)\]");
+                //var m = regex.Match(ticket.MoTa);
+                //if (m.Success)
+                //{
+                //    ticket.ThoiGianNhan = m.Groups[1].Value;
+                //    ticket.ThoiGianXong = m.Groups[2].Value;
+                //    // Tẩy xóa phần thời gian khỏi Mô tả để người dùng không thấy sự "lén lút" này
+                //    //ticket.MoTa = ticket.MoTa.Replace(m.Value, "").Trim();
+                //    ticket.description = ticket.description?.Replace(m.Value, "").Trim();
+                //}
             }
         }
 
@@ -970,6 +1005,9 @@ namespace GhiIssue
                     var freshList = new BindingList<PredefinedTitle>();
                     string lastGroup = "Khác (Nhập tay)";
 
+                    HashSet<string> tempTypes = new HashSet<string>();
+                    HashSet<string> tempActions = new HashSet<string>();
+
                     for (int i = 1; i < lines.Length; i++)
                     {
                         string[] cols = lines[i].Split('\t');
@@ -977,9 +1015,39 @@ namespace GhiIssue
                         {
                             string groupName = cols[0].Trim();
                             string titleName = cols[1].Trim();
+                            // Đọc thêm Cột 3 và Cột 4
+                            string typeIssue = cols.Length >= 3 ? cols[2].Trim() : "";
+                            string techAction = cols.Length >= 4 ? cols[3].Trim() : "";
+
                             if (!string.IsNullOrEmpty(groupName)) lastGroup = groupName; else groupName = lastGroup;
-                            if (!string.IsNullOrEmpty(titleName)) freshList.Add(new PredefinedTitle { Group = groupName, Title = titleName });
+                            if (!string.IsNullOrEmpty(titleName))
+                            {
+                                freshList.Add(new PredefinedTitle { Group = groupName, Title = titleName, TypeIssue = typeIssue, TechAction = techAction });
+                            }
+
+                            // Gom nhặt dữ liệu thả xuống (Tự lọc trùng)
+                            if (!string.IsNullOrEmpty(typeIssue)) tempTypes.Add(typeIssue);
+                            if (!string.IsNullOrEmpty(techAction)) tempActions.Add(techAction);
                         }
+                    }
+
+                    if (freshList.Count > 0)
+                    {
+                        File.WriteAllText(titlesCachePath, JsonSerializer.Serialize(freshList));
+                        this.Invoke(new Action(() =>
+                        {
+                            defaultTitles = freshList;
+
+                            defaultTypeIssues.Clear(); foreach (var t in tempTypes) defaultTypeIssues.Add(new ComboItem { Text = t });
+                            defaultTechActions.Clear(); foreach (var a in tempActions) defaultTechActions.Add(new ComboItem { Text = a });
+
+                            if (dgvCreateTickets != null)
+                            {
+                                if (dgvCreateTickets.Columns.Contains("colTitle")) ((DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colTitle"]).DataSource = defaultTitles;
+                                if (dgvCreateTickets.Columns.Contains("colTypeIssue")) ((DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colTypeIssue"]).DataSource = defaultTypeIssues;
+                                if (dgvCreateTickets.Columns.Contains("colDesc")) ((DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colDesc"]).DataSource = defaultTechActions;
+                            }
+                        }));
                     }
 
                     if (freshList.Count > 0)
@@ -1084,7 +1152,7 @@ namespace GhiIssue
         }
 
         // =========================================================================
-        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V4.1 FIX LỖI MERGED CELL)
+        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V4.3 FIX LỖI MERGED CELL)
         // =========================================================================
         private async Task LoadDefaultTitlesAsync()
         {
@@ -1552,7 +1620,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "4.1"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
+            string currentVersion = "4.3"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -1858,6 +1926,18 @@ namespace GhiIssue
                         if (match != null) finalValue = match.Title;
                     }
                 }
+                else if (colName == "colTypeIssue")
+                {
+                    if (!defaultTypeIssues.Any(t => t.Text.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                        defaultTypeIssues.Insert(0, new ComboItem { Text = typedText });
+                    finalValue = typedText;
+                }
+                else if (colName == "colDesc")
+                {
+                    if (!defaultTechActions.Any(t => t.Text.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
+                        defaultTechActions.Insert(0, new ComboItem { Text = typedText });
+                    finalValue = typedText;
+                }
                 else if (colName == "colTag")
                 {
                     if (!tagList.Any(t => t.name.Equals(typedText, StringComparison.OrdinalIgnoreCase)))
@@ -1899,9 +1979,85 @@ namespace GhiIssue
             }
         }
 
+        // 1. CHẶN KHÔNG CHO GÕ CHỮ, CHỈ CHO GÕ SỐ
+        private void TimeColumn_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar))
+            {
+                e.Handled = true; // Chặn đứng phím đó lại
+            }
+        }
+
+        // 2. LOGIC TỰ ÉP KIỂU VÀ CHÈN DẤU HAI CHẤM
+        private bool isTimeFormatting = false;
+        private void TimeColumn_TextChanged(object sender, EventArgs e)
+        {
+            if (isTimeFormatting) return;
+            TextBox txt = sender as TextBox;
+            if (txt == null) return;
+
+            isTimeFormatting = true;
+            int cursor = txt.SelectionStart;
+
+            // Lột sạch, chỉ giữ lại số
+            string raw = new string(txt.Text.Where(char.IsDigit).ToArray());
+
+            // 🌟 CHẶN GÕ LỐ NGAY TỪ TRONG TRỨNG NƯỚC (Cắt cụt nếu > 4 số)
+            if (raw.Length > 4) raw = raw.Substring(0, 4);
+
+            if (raw.Length > 0)
+            {
+                int h = 0, m = 0;
+                string newText = "";
+
+                // Xử lý Giờ
+                if (raw.Length >= 1)
+                {
+                    string hourStr = raw.Length >= 2 ? raw.Substring(0, 2) : raw.Substring(0, 1);
+                    h = int.Parse(hourStr);
+
+                    if (h > 23) { h = 23; hourStr = "23"; } // Ép ngay lập tức
+                    newText = hourStr;
+
+                    // Gõ đủ 2 số -> Tự động chèn ":"
+                    if (raw.Length >= 2)
+                    {
+                        newText += ":";
+                        if (cursor == 2 && !txt.Text.Contains(":")) cursor++;
+                    }
+                }
+
+                // Xử lý Phút
+                if (raw.Length >= 3)
+                {
+                    string minStr = raw.Length >= 4 ? raw.Substring(2, 2) : raw.Substring(2, 1);
+                    m = int.Parse(minStr);
+
+                    if (m > 59) { m = 59; minStr = "59"; } // Ép ngay lập tức
+                    newText += minStr;
+                }
+
+                if (txt.Text != newText)
+                {
+                    txt.Text = newText;
+                    txt.SelectionStart = cursor <= txt.Text.Length ? cursor : txt.Text.Length;
+                }
+            }
+            else txt.Text = "";
+
+            isTimeFormatting = false;
+        }
+
         // FIX LỖI TỰ NHẢY TÊN THUẬN KHI ENTER
         private void DgvCreateTickets_EditingControlShowing(object sender, DataGridViewEditingControlShowingEventArgs e)
         {
+            if (dgvCreateTickets.CurrentCell == null) return;
+            string colName = dgvCreateTickets.CurrentCell.OwningColumn.Name;
+            object cellValue = dgvCreateTickets.CurrentCell.Value;
+
+            // ==========================================================
+            // PHẦN 1: XỬ LÝ CHO CÁC CỘT DẠNG XỔ XUỐNG (COMBOBOX)
+            // ==========================================================
             if (e.Control is ComboBox cb)
             {
                 cb.DropDownStyle = ComboBoxStyle.DropDown;
@@ -1909,10 +2065,7 @@ namespace GhiIssue
 
                 cb.TextUpdate -= Cb_TextUpdate;
                 cb.KeyDown -= Cb_KeyDown;
-                cb.Validating -= Cb_Validating; // Thêm dò tìm sự kiện khi bấm ra ngoài
-
-                string colName = dgvCreateTickets.CurrentCell.OwningColumn.Name;
-                object cellValue = dgvCreateTickets.CurrentCell.Value;
+                cb.Validating -= Cb_Validating;
 
                 // XỬ LÝ ĐẶC BIỆT CHO 2 CỘT PHÂN LOẠI (KHÓA GÕ TAY)
                 if (colName == "colCategory" || colName == "colSubCategory")
@@ -1937,27 +2090,19 @@ namespace GhiIssue
                     }
 
                     if (cellValue != null) cb.Text = cellValue.ToString(); else cb.SelectedIndex = -1;
-                    return; // Dừng hàm tại đây, không cho chạy phần code của Tag/Title phía dưới nữa
+                    return; // Dừng hàm tại đây
                 }
 
                 if (colName == "colTitle")
                 {
                     string currentVal = cellValue?.ToString() ?? "";
                     var cleanList = defaultTitles.Where(t => t.Group != "Khác (Nhập tay)" || t.Title == currentVal).ToList();
-
-                    cb.DataSource = cleanList;
-                    cb.DisplayMember = "Title";
-                    cb.ValueMember = "Title";
-
-                    if (!string.IsNullOrEmpty(currentVal)) cb.Text = currentVal;
-                    else cb.SelectedIndex = -1; // KHÔNG CHỌN MẶC ĐỊNH
+                    cb.DataSource = cleanList; cb.DisplayMember = "Title"; cb.ValueMember = "Title";
+                    if (!string.IsNullOrEmpty(currentVal)) cb.Text = currentVal; else cb.SelectedIndex = -1;
                 }
                 else if (colName == "colTag")
                 {
-                    // CHỈ LẤY 100 ITEM KHI VỪA CLICK ĐỂ CHỐNG LAG KHUNG HÌNH
                     var initialTagList = tagList.Take(100).ToList();
-
-                    // Nếu ô đang có Tag sẵn (không phải ô trống), phải nhét Tag đó vào list hiển thị
                     if (cellValue != null && cellValue.ToString() != "")
                     {
                         if (!initialTagList.Any(t => t.id == cellValue.ToString()))
@@ -1966,24 +2111,13 @@ namespace GhiIssue
                             if (missingTag != null) initialTagList.Insert(0, missingTag);
                         }
                     }
-
-                    cb.DataSource = null;
-                    cb.DataSource = initialTagList;
-                    cb.DisplayMember = "name";
-                    cb.ValueMember = "id";
-
-                    // NẾU Ô TRỐNG THÌ ÉP DROPDOWN KHÔNG CHỌN GÌ CẢ (CHỐNG TỰ ĐIỀN DÒNG 1)
-                    if (cellValue != null && cellValue.ToString() != "") cb.SelectedValue = cellValue;
-                    else cb.SelectedIndex = -1;
+                    cb.DataSource = null; cb.DataSource = initialTagList; cb.DisplayMember = "name"; cb.ValueMember = "id";
+                    if (cellValue != null && cellValue.ToString() != "") cb.SelectedValue = cellValue; else cb.SelectedIndex = -1;
                 }
                 else if (colName == "colAssignee")
                 {
-                    cb.DataSource = employees.ToList();
-                    cb.DisplayMember = "Name";
-                    cb.ValueMember = "Id";
-
-                    if (cellValue != null) cb.SelectedValue = cellValue;
-                    else cb.SelectedIndex = -1;
+                    cb.DataSource = employees.ToList(); cb.DisplayMember = "Name"; cb.ValueMember = "Id";
+                    if (cellValue != null) cb.SelectedValue = cellValue; else cb.SelectedIndex = -1;
                 }
 
                 BeginInvoke(new Action(() =>
@@ -1997,7 +2131,25 @@ namespace GhiIssue
 
                 cb.TextUpdate += Cb_TextUpdate;
                 cb.KeyDown += Cb_KeyDown;
-                cb.Validating += Cb_Validating; // Khởi hoạt sự kiện
+                cb.Validating += Cb_Validating;
+            }
+
+            // ==========================================================
+            // PHẦN 2: XỬ LÝ CHO CÁC CỘT DẠNG GÕ CHỮ (TEXTBOX)
+            // ==========================================================
+            else if (e.Control is TextBox txt)
+            {
+                if (colName == "colStartTime" || colName == "colEndTime")
+                {
+                    // 🌟 NÓ NẰM Ở ĐÂY MỚI ĐÚNG NHÉ!
+                    txt.MaxLength = 5;
+
+                    txt.KeyPress -= TimeColumn_KeyPress;
+                    txt.TextChanged -= TimeColumn_TextChanged;
+
+                    txt.KeyPress += TimeColumn_KeyPress;
+                    txt.TextChanged += TimeColumn_TextChanged;
+                }
             }
         }
 
@@ -2109,6 +2261,18 @@ namespace GhiIssue
                 }
                 cb.DataSource = ds; cb.DisplayMember = "Title"; cb.ValueMember = "Title"; dataSource = ds;
             }
+            else if (colName == "colTypeIssue")
+            {
+                var ds = string.IsNullOrEmpty(searchKeyword) ? defaultTypeIssues.ToList() : defaultTypeIssues.Where(x => x.UnsignedText.Contains(searchKeyword)).ToList();
+                if (ds.Count == 0) ds.Add(new ComboItem { Text = keyword }); // Rỗng thì ép vào để không crash
+                cb.DataSource = ds; cb.DisplayMember = "Text"; cb.ValueMember = "Text"; dataSource = ds;
+            }
+            else if (colName == "colDesc")
+            {
+                var ds = string.IsNullOrEmpty(searchKeyword) ? defaultTechActions.ToList() : defaultTechActions.Where(x => x.UnsignedText.Contains(searchKeyword)).ToList();
+                if (ds.Count == 0) ds.Add(new ComboItem { Text = keyword }); // Rỗng thì ép vào để không crash
+                cb.DataSource = ds; cb.DisplayMember = "Text"; cb.ValueMember = "Text"; dataSource = ds;
+            }
             else if (colName == "colTag")
             {
                 var ds = string.IsNullOrEmpty(searchKeyword) ? tagList.Take(100).ToList() : tagList.Where(x => x.UnsignedName.Contains(searchKeyword)).Take(100).ToList();
@@ -2152,6 +2316,41 @@ namespace GhiIssue
                     dgvCreateTickets.CommitEdit(DataGridViewDataErrorContexts.Commit);
                 }
             }
+        }
+
+        private void DgvCreateTickets_CellEndEdit(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+            string colName = dgvCreateTickets.Columns[e.ColumnIndex].Name;
+
+            if (colName == "colStartTime" || colName == "colEndTime")
+            {
+                var cell = dgvCreateTickets.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                string val = cell.Value?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(val))
+                {
+                    string raw = new string(val.Where(char.IsDigit).ToArray());
+
+                    if (raw.Length == 3) raw = "0" + raw;
+
+                    if (raw.Length == 4)
+                    {
+                        int h = int.Parse(raw.Substring(0, 2));
+                        int m = int.Parse(raw.Substring(2, 2));
+                        if (h > 23) h = 23;
+                        if (m > 59) m = 59;
+                        cell.Value = $"{h:D2}:{m:D2}";
+                    }
+                    else
+                    {
+                        // CHỈ BÁO LỖI KHI CỐ TÌNH GÕ THIẾU SỐ
+                        MessageBox.Show("Vui lòng nhập đủ 4 số!\nVí dụ: 0830 (cho 08:30)", "Chưa hoàn thành", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        cell.Value = null;
+                        BeginInvoke(new Action(() => { dgvCreateTickets.CurrentCell = cell; dgvCreateTickets.BeginEdit(true); }));
+                    }
+                }
+            }
+            SaveDraft();
         }
 
         private void DgvCreateTickets_CellValueChanged(object sender, DataGridViewCellEventArgs e)
@@ -2203,14 +2402,17 @@ namespace GhiIssue
                 if (matched != null && matched.Group != "Khác (Nhập tay)")
                 {
                     currentRow.Cells["colGroup"].Value = matched.Group;
+                    //currentRow.Cells["colTypeIssue"].Value = matched.TypeIssue; // 🌟 Tự động mapping
+                    //currentRow.Cells["colDesc"].Value = matched.TechAction;     // 🌟 Tự động mapping
                 }
                 else
                 {
                     currentRow.Cells["colGroup"].Value = "Khác (Nhập tay)";
                 }
                 dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
-                EnsureSufficientRows(5); // Cứ gõ tiêu đề là tự động bơm, giữ luôn có 5 dòng trống dự trữ
+                EnsureSufficientRows(5);
             }
+
 
             if (colName == "colAssignee")
             {
@@ -2370,7 +2572,24 @@ namespace GhiIssue
             colTitle.FlatStyle = FlatStyle.Flat; // Xóa viền 3D, làm nút phẳng hiện đại
             dgvCreateTickets.Columns.Add(colTitle);
 
-            dgvCreateTickets.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Mô tả chi tiết", Name = "colDesc", FillWeight = 15 });
+            DataGridViewComboBoxColumn colTypeIssue = new DataGridViewComboBoxColumn();
+            colTypeIssue.HeaderText = "Type Issue";
+            colTypeIssue.Name = "colTypeIssue";
+            colTypeIssue.DataSource = defaultTypeIssues;
+            colTypeIssue.DisplayMember = "Text"; colTypeIssue.ValueMember = "Text";
+            colTypeIssue.FillWeight = 30;
+            colTypeIssue.DisplayStyleForCurrentCellOnly = true; colTypeIssue.FlatStyle = FlatStyle.Flat;
+            dgvCreateTickets.Columns.Add(colTypeIssue);
+
+            DataGridViewComboBoxColumn colDesc = new DataGridViewComboBoxColumn();
+            colDesc.HeaderText = "Mô tả (Technical Action)";
+            colDesc.Name = "colDesc";
+            colDesc.DataSource = defaultTechActions;
+            colDesc.DisplayMember = "Text"; colDesc.ValueMember = "Text";
+            colDesc.FillWeight = 30;
+            colDesc.DisplayStyleForCurrentCellOnly = true; colDesc.FlatStyle = FlatStyle.Flat;
+            dgvCreateTickets.Columns.Add(colDesc);
+            //dgvCreateTickets.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Mô tả chi tiết", Name = "colDesc", FillWeight = 15 });
 
             // CỘT CHỦ ĐỀ (Đã nạp bộ nhớ chống mù chữ)
             DataGridViewComboBoxColumn colCategory = new DataGridViewComboBoxColumn();
@@ -2408,6 +2627,18 @@ namespace GhiIssue
             colTag.DisplayStyleForCurrentCellOnly = true;
             colTag.FlatStyle = FlatStyle.Flat;
             dgvCreateTickets.Columns.Add(colTag);
+
+            DataGridViewTextBoxColumn colStartTime = new DataGridViewTextBoxColumn();
+            colStartTime.HeaderText = "Time Nhận";
+            colStartTime.Name = "colStartTime";
+            colStartTime.FillWeight = 7;
+            dgvCreateTickets.Columns.Add(colStartTime);
+
+            DataGridViewTextBoxColumn colEndTime = new DataGridViewTextBoxColumn();
+            colEndTime.HeaderText = "Time Hoàn Thành";
+            colEndTime.Name = "colEndTime";
+            colEndTime.FillWeight = 7;
+            dgvCreateTickets.Columns.Add(colEndTime);
 
             DataGridViewComboBoxColumn colAssignee = new DataGridViewComboBoxColumn();
             colAssignee.HeaderText = "Người xử lý";
@@ -2667,6 +2898,15 @@ namespace GhiIssue
                     {
                         string title = row.Cells["colTitle"].Value?.ToString() ?? "";
                         string desc = row.Cells["colDesc"].Value?.ToString() ?? "";
+                        string startTime = row.Cells["colStartTime"].Value?.ToString() ?? "";
+                        string endTime = row.Cells["colEndTime"].Value?.ToString() ?? "";
+
+                        // 🌟 TRẢ LẠI CÁCH GHI CHỮ ĐỂ OMICRM KHÔNG THỂ XÓA
+                        string finalDesc = string.IsNullOrEmpty(desc) ? "" : $"<div style=\"font-size: 15px;\">{desc}</div>";
+                        if (!string.IsNullOrEmpty(startTime) || !string.IsNullOrEmpty(endTime))
+                        {
+                            finalDesc += $"<br><br>[TG: {startTime} - {endTime}]";
+                        }
 
                         // Lấy text đang hiển thị
                         string catName = row.Cells["colCategory"].Value?.ToString() ?? "";
@@ -2691,7 +2931,11 @@ namespace GhiIssue
                         var createBody = new
                         {
                             name = title,
-                            description = string.IsNullOrEmpty(desc) ? "" : $"<div style=\"font-size: 15px;\">{desc}</div>",
+                            // Gửi finalDesc thay vì desc
+                            //description = string.IsNullOrEmpty(finalDesc) ? "" : $"<div style=\"font-size: 15px;\">{finalDesc}</div>",
+                            //category_id = realCatId,
+                            //description = string.IsNullOrEmpty(desc) ? "" : $"<div style=\"font-size: 15px;\">{desc}</div>",
+                            description = finalDesc,
                             category_id = realCatId, // ĐẨY ID LÊN API
                             current_type = typeIndex, // ĐẨY INDEX LÊN API
                             assignee_contact_ids = string.IsNullOrEmpty(finalEmp) ? new string[] { } : new[] { finalEmp },
@@ -2790,7 +3034,12 @@ namespace GhiIssue
                         currentRow.Cells["colTag"].Value = null;
                         currentRow.Cells["colResult"].Value = null;
 
-                        // Ép cứng về Mặc định "POS - Lỗi kết nối"
+                        // 🌟 THÊM 3 DÒNG NÀY ĐỂ TẨY SẠCH CÁC CỘT MỚI
+                        currentRow.Cells["colTypeIssue"].Value = null;
+                        currentRow.Cells["colStartTime"].Value = null;
+                        currentRow.Cells["colEndTime"].Value = null;
+
+                        // Ép cứng về Mặc định (Đoạn này của bạn có sẵn, giữ nguyên)
                         currentRow.Cells["colCategory"].Value = defaultCat;
                         currentRow.Cells["colSubCategory"].Value = defaultSubCat;
                         if (!string.IsNullOrEmpty(defaultAssigneeId)) currentRow.Cells["colAssignee"].Value = defaultAssigneeId;
@@ -3154,14 +3403,17 @@ namespace GhiIssue
             // =================================================================================
             // 🌟 SẮP XẾP LẠI VỊ TRÍ CỘT: ID -> NHÓM -> TÊN PHIẾU -> NGÀY TẠO -> ...
             // =================================================================================
-            if (dgvTickets.Columns.Contains("unique_id")) { dgvTickets.Columns["unique_id"].HeaderText = "ID Phiếu"; dgvTickets.Columns["unique_id"].DisplayIndex = 0; dgvTickets.Columns["unique_id"].Width = 80; }
-            if (dgvTickets.Columns.Contains("group_name")) { dgvTickets.Columns["group_name"].HeaderText = "Nhóm"; dgvTickets.Columns["group_name"].DisplayIndex = 1; dgvTickets.Columns["group_name"].Width = 120; }
+            if (dgvTickets.Columns.Contains("unique_id")) { dgvTickets.Columns["unique_id"].HeaderText = "ID"; dgvTickets.Columns["unique_id"].DisplayIndex = 0; dgvTickets.Columns["unique_id"].Width = 60; }
+            if (dgvTickets.Columns.Contains("group_name")) { dgvTickets.Columns["group_name"].HeaderText = "Nhóm"; dgvTickets.Columns["group_name"].DisplayIndex = 1; dgvTickets.Columns["group_name"].Width = 100; }
             if (dgvTickets.Columns.Contains("name")) { dgvTickets.Columns["name"].HeaderText = "Tên Phiếu"; dgvTickets.Columns["name"].DisplayIndex = 2; }
-            if (dgvTickets.Columns.Contains("MoTa")) { dgvTickets.Columns["MoTa"].HeaderText = "Mô tả chi tiết"; dgvTickets.Columns["MoTa"].DisplayIndex = 2; }
-            if (dgvTickets.Columns.Contains("NgayTao")) { dgvTickets.Columns["NgayTao"].HeaderText = "Ngày Tạo"; dgvTickets.Columns["NgayTao"].DisplayIndex = 3; dgvTickets.Columns["NgayTao"].Width = 130; }
-            if (dgvTickets.Columns.Contains("TrangThaiHienThi")) { dgvTickets.Columns["TrangThaiHienThi"].HeaderText = "Trạng Thái"; dgvTickets.Columns["TrangThaiHienThi"].DisplayIndex = 4; dgvTickets.Columns["TrangThaiHienThi"].Width = 140; }
-            if (dgvTickets.Columns.Contains("NguoiNhan")) { dgvTickets.Columns["NguoiNhan"].HeaderText = "Người Xử Lý"; dgvTickets.Columns["NguoiNhan"].DisplayIndex = 5; }
-            if (dgvTickets.Columns.Contains("TenTag")) { dgvTickets.Columns["TenTag"].HeaderText = "Danh sách Tag"; dgvTickets.Columns["TenTag"].DisplayIndex = 6; }
+            if (dgvTickets.Columns.Contains("TypeIssue")) { dgvTickets.Columns["TypeIssue"].HeaderText = "Type Issue"; dgvTickets.Columns["TypeIssue"].DisplayIndex = 3; }
+            if (dgvTickets.Columns.Contains("MoTa")) { dgvTickets.Columns["MoTa"].HeaderText = "Mô tả chi tiết"; dgvTickets.Columns["MoTa"].DisplayIndex = 4; }
+            if (dgvTickets.Columns.Contains("ThoiGianNhan")) { dgvTickets.Columns["ThoiGianNhan"].HeaderText = "TG Nhận"; dgvTickets.Columns["ThoiGianNhan"].DisplayIndex = 5; dgvTickets.Columns["ThoiGianNhan"].Width = 80; }
+            if (dgvTickets.Columns.Contains("ThoiGianXong")) { dgvTickets.Columns["ThoiGianXong"].HeaderText = "TG Xong"; dgvTickets.Columns["ThoiGianXong"].DisplayIndex = 6; dgvTickets.Columns["ThoiGianXong"].Width = 80; }
+            if (dgvTickets.Columns.Contains("NgayTao")) { dgvTickets.Columns["NgayTao"].HeaderText = "Ngày Tạo"; dgvTickets.Columns["NgayTao"].DisplayIndex = 7; dgvTickets.Columns["NgayTao"].Width = 120; }
+            if (dgvTickets.Columns.Contains("TrangThaiHienThi")) { dgvTickets.Columns["TrangThaiHienThi"].HeaderText = "Trạng Thái"; dgvTickets.Columns["TrangThaiHienThi"].DisplayIndex = 8; dgvTickets.Columns["TrangThaiHienThi"].Width = 100; }
+            if (dgvTickets.Columns.Contains("NguoiNhan")) { dgvTickets.Columns["NguoiNhan"].HeaderText = "Người Xử Lý"; dgvTickets.Columns["NguoiNhan"].DisplayIndex = 9; }
+            if (dgvTickets.Columns.Contains("TenTag")) { dgvTickets.Columns["TenTag"].HeaderText = "Danh sách Tag"; dgvTickets.Columns["TenTag"].DisplayIndex = 10; }
 
             // Ẩn toàn bộ các cột dữ liệu rác của hệ thống
             if (dgvTickets.Columns.Contains("tags")) dgvTickets.Columns["tags"].Visible = false;
@@ -3479,6 +3731,9 @@ namespace GhiIssue
                 (Prop: "NguoiNhan",        Name: "Người Xử Lý",              IsChecked: true),
                 (Prop: "TrangThaiHienThi", Name: "Trạng Thái",               IsChecked: true),
                 (Prop: "TenTag",           Name: "Danh sách Tag",            IsChecked: true),
+                (Prop: "TypeIssue",        Name: "Type Issue",               IsChecked: true),
+                (Prop: "ThoiGianNhan",     Name: "Thời Gian Nhận",           IsChecked: true),
+                (Prop: "ThoiGianXong",     Name: "Thời Gian Hoàn Thành",     IsChecked: true),
 
                 // -- CÁC CỘT PHỤ HỆ THỐNG (Không tick sẵn) --
                 (Prop: "id",               Name: "Mã ID hệ thống (Ẩn)",      IsChecked: false),
@@ -3577,12 +3832,24 @@ namespace GhiIssue
     {
         public string Group { get; set; }
         public string Title { get; set; }
+        public string TypeIssue { get; set; }  // 🌟 MỚI THÊM
+        public string TechAction { get; set; } // 🌟 MỚI THÊM
 
         public override string ToString() { return Title; }
 
         [System.Text.Json.Serialization.JsonIgnore]
         public string UnsignedTitle => _us ?? (_us = Form1.ConvertToUnSignStatic(Title));
         private string _us;
+    }
+
+    public class ComboItem
+    {
+        public string Text { get; set; }
+        public override string ToString() { return Text; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string UnsignedText => _ut ?? (_ut = Form1.ConvertToUnSignStatic(Text));
+        private string _ut;
     }
 
     public class DraftTicket
@@ -3693,8 +3960,12 @@ namespace GhiIssue
                 }
             }
         }
+        public string TenTag { get; set; }  // Chứa Tên Tiếng Việt của Tag
+        public string TypeIssue { get; set; }
+        public string ThoiGianNhan { get; set; }
+        public string ThoiGianXong { get; set; }
         public string NguoiNhan { get; set; }
-        public string TenTag { get; set; } // Chứa Tên Tiếng Việt của Tag
+        
     }
 
     public class ColumnExportItem

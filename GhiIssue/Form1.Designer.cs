@@ -33,6 +33,7 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             tabControl1 = new TabControl();
             tabPage1 = new TabPage();
+            btnAdmin = new Button();
             btnToggleCategory = new Button();
             btnTheme = new Button();
             btnSyncToken = new Button();
@@ -78,6 +79,7 @@
             // 
             // tabPage1
             // 
+            tabPage1.Controls.Add(btnAdmin);
             tabPage1.Controls.Add(btnToggleCategory);
             tabPage1.Controls.Add(btnTheme);
             tabPage1.Controls.Add(btnSyncToken);
@@ -91,6 +93,18 @@
             tabPage1.TabIndex = 0;
             tabPage1.Text = "TẠO PHIẾU";
             tabPage1.UseVisualStyleBackColor = true;
+            // 
+            // btnAdmin
+            // 
+            btnAdmin.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            btnAdmin.FlatStyle = FlatStyle.Flat;
+            btnAdmin.Location = new Point(256, 672);
+            btnAdmin.Name = "btnAdmin";
+            btnAdmin.Size = new Size(75, 26);
+            btnAdmin.TabIndex = 9;
+            btnAdmin.Text = "⚙️ Admin";
+            btnAdmin.UseVisualStyleBackColor = true;
+            btnAdmin.Visible = false;
             // 
             // btnToggleCategory
             // 
@@ -343,7 +357,7 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v4.3";
+            Text = "Ghi Issue - v4.5";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();
@@ -380,5 +394,6 @@
         private ComboBox cbQuickTag;
         private ComboBox cbQuickGroup;
         private Label label2;
+        private Button btnAdmin;
     }
 }

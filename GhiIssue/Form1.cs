@@ -3010,11 +3010,18 @@ namespace GhiIssue
                     {
                         string title = row.Cells["colTitle"].Value?.ToString() ?? "";
                         string desc = row.Cells["colDesc"].Value?.ToString() ?? "";
+                        // 🌟 BỔ SUNG: LẤY DỮ LIỆU TYPE ISSUE TRÊN LƯỚI
+                        string typeIssue = row.Cells["colTypeIssue"].Value?.ToString() ?? "";
                         string startTime = row.Cells["colStartTime"].Value?.ToString() ?? "";
                         string endTime = row.Cells["colEndTime"].Value?.ToString() ?? "";
 
-                        // 🌟 TRẢ LẠI CÁCH GHI CHỮ ĐỂ OMICRM KHÔNG THỂ XÓA
+                        // 🌟 ĐÓNG GÓI TYPE ISSUE VÀ THỜI GIAN VÀO MÃ HTML GIỐNG HỆT POPUP SỬA PHIẾU
                         string finalDesc = string.IsNullOrEmpty(desc) ? "" : $"<div style=\"font-size: 15px;\">{desc}</div>";
+                        if (!string.IsNullOrEmpty(startTime) || !string.IsNullOrEmpty(endTime) || !string.IsNullOrEmpty(typeIssue))
+                        {
+                            finalDesc += $"<br><br>[TG: {startTime} - {endTime}]<br>[Type: {typeIssue}]";
+                        }
+                        // 🌟 TRẢ LẠI CÁCH GHI CHỮ ĐỂ OMICRM KHÔNG THỂ XÓA
                         if (!string.IsNullOrEmpty(startTime) || !string.IsNullOrEmpty(endTime))
                         {
                             finalDesc += $"<br><br>[TG: {startTime} - {endTime}]";

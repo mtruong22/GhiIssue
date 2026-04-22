@@ -3205,14 +3205,11 @@ namespace GhiIssue
 
                         // 🌟 ĐÓNG GÓI TYPE ISSUE VÀ THỜI GIAN VÀO MÃ HTML GIỐNG HỆT POPUP SỬA PHIẾU
                         string finalDesc = string.IsNullOrEmpty(desc) ? "" : $"<div style=\"font-size: 15px;\">{desc}</div>";
-                        //if (!string.IsNullOrEmpty(startTime) || !string.IsNullOrEmpty(endTime) || !string.IsNullOrEmpty(typeIssue))
-                        //{
-                        //    finalDesc += $"<br><br>[TG: {startTime} - {endTime}]<br>[Type: {typeIssue}]";
-                        //}
-                        // 🌟 TRẢ LẠI CÁCH GHI CHỮ ĐỂ OMICRM KHÔNG THỂ XÓA
-                        if (!string.IsNullOrEmpty(startTime) || !string.IsNullOrEmpty(endTime))
+
+                        // Ghép cả Thời Gian và Type Issue vào 1 block duy nhất để không bao giờ bị lặp
+                        if (!string.IsNullOrEmpty(startTime) || !string.IsNullOrEmpty(endTime) || !string.IsNullOrEmpty(typeIssue))
                         {
-                            finalDesc += $"<br><br>[TG: {startTime} - {endTime}]";
+                            finalDesc += $"<br><br>[TG: {startTime} - {endTime}]<br>[Type: {typeIssue}]";
                         }
 
                         // Lấy text đang hiển thị

@@ -199,7 +199,7 @@ namespace GhiIssue
 
         public Form1()
         {
-            this.Text = "Ghi Issue v4.7";
+            this.Text = "Ghi Issue v4.8";
 
             if (!Directory.Exists(Application.StartupPath)) Directory.CreateDirectory(Application.StartupPath);
 
@@ -1267,7 +1267,7 @@ namespace GhiIssue
         }
 
         // =========================================================================
-        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V4.7 FIX LỖI MERGED CELL)
+        // HÀM TẢI TIÊU ĐỀ TỪ GOOGLE SHEET BẤT TỬ (V4.8 FIX LỖI MERGED CELL)
         // =========================================================================
         private async Task LoadDefaultTitlesAsync()
         {
@@ -1735,7 +1735,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "4.7"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
+            string currentVersion = "4.8"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.IO;
 
 namespace GhiIssue
 {
@@ -18,7 +19,7 @@ namespace GhiIssue
         public static Dictionary<string, string> dictTypeEng = new Dictionary<string, string>();
         public static string cloudColumnConfig = "1,1,1,1,1,1,1,1,1,1,1,1,1,1"; // Mặc định bật 14 cột đầu
         public static string webhookReportUrl = "";
-        public class QuickFilterItem { public string Text { get; set; } public string Id { get; set; } }
+        public class QuickFilterItem { public string Text { get; set; } = ""; public string Id { get; set; } = ""; }
         public static bool isStrictTitle = true;
         //public static bool isStrictMode = true;
         public static bool isStrictType = true;
@@ -28,6 +29,7 @@ namespace GhiIssue
         public static bool requireRetailTypeIssue = false;
         public static bool allowEditMappedType = true;
         private List<string> adminEmails = new List<string> { "truongmh" };
+        private string smartTemplatePath = Path.Combine(Application.StartupPath, "smart_templates.json");
         private string configUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRGeOsJ71sqpI__BcxboJTp-SvETPWY4-H21rs2mnTQb_K1LRSJJaAkBIP8TyGjgdidcF47gH_lCfUJ/pub?gid=1103587946&single=true&output=tsv";
         private List<TicketItem> _masterTicketList = new List<TicketItem>();
         private List<QuickFilterItem> _baseGroupFilters = new List<QuickFilterItem>();
@@ -212,8 +214,10 @@ namespace GhiIssue
             // KẾT NỐI CÁC NÚT CƠ BẢN
             if (btnCreateTicket != null)
             {
+                // ✅ ĐỔI sang handler Card UI mới
                 btnCreateTicket.Click -= btnCreateTicket_Click;
-                btnCreateTicket.Click += btnCreateTicket_Click;
+                btnCreateTicket.Click -= btnCreateTicket_CardClick;
+                btnCreateTicket.Click += btnCreateTicket_CardClick;
             }
             //if (btnAddRow != null)
             //{
@@ -280,9 +284,9 @@ namespace GhiIssue
                 dgvCreateTickets.EditingControlShowing += DgvCreateTickets_EditingControlShowing;
                 dgvCreateTickets.CellValidating += DgvCreateTickets_CellValidating;
                 dgvCreateTickets.CellBeginEdit += DgvCreateTickets_CellBeginEdit; // 🌟 KÍCH HOẠT KHIÊN BẢO VỆ
-                //dgvCreateTickets.CellEndEdit += (s, e) => SaveDraft();
+                //dgvCreateTickets.CellEndEdit += (s, e) => SaveDraftCards();
                 dgvCreateTickets.CellEndEdit += DgvCreateTickets_CellEndEdit;
-                dgvCreateTickets.RowsRemoved += (s, e) => SaveDraft();
+                dgvCreateTickets.RowsRemoved += (s, e) => SaveDraftCards();
 
                 // Kích hoạt đếm dòng
                 dgvCreateTickets.SelectionChanged += (s, e) => UpdateStatusCount();
@@ -321,7 +325,7 @@ namespace GhiIssue
 
             autoSaveTimer = new System.Windows.Forms.Timer();
             autoSaveTimer.Interval = 5000;
-            autoSaveTimer.Tick += (s, e) => SaveDraft();
+            autoSaveTimer.Tick += (s, e) => SaveDraftCards();
             autoSaveTimer.Start();
         }
 
@@ -438,13 +442,45 @@ namespace GhiIssue
                 }
             }
         }
+        // 🌟 AI CỤC BỘ: TỰ ĐỘNG HỌC HỎI CÁC PHIẾU HAY TẠO
+        private void LearnSmartTemplate(string title, string desc)
+        {
+            if (string.IsNullOrEmpty(title)) return;
 
+            List<SmartTemplate> templates = new List<SmartTemplate>();
+            if (File.Exists(smartTemplatePath))
+            {
+                try { templates = JsonSerializer.Deserialize<List<SmartTemplate>>(File.ReadAllText(smartTemplatePath)); } catch { }
+            }
+
+            // Tìm xem phiếu này đã từng tạo chưa
+            var existing = templates.FirstOrDefault(t => t.Title == title && t.Desc == desc);
+            if (existing != null)
+            {
+                existing.UseCount++; // Nếu có rồi thì tăng tần suất lên
+            }
+            else
+            {
+                templates.Add(new SmartTemplate { Title = title, Desc = desc, UseCount = 1 }); // Chưa có thì thêm mới
+            }
+
+            // Lưu lại vào "Não"
+            File.WriteAllText(smartTemplatePath, JsonSerializer.Serialize(templates));
+        }
         private void UpdateStatusCount()
         {
             try
             {
                 if (myStatusLabel == null) return;
 
+                // ✅ THÊM MỚI: nếu đang ở tab Tạo Phiếu và card UI đã khởi tạo → dùng card count
+                if (_cardPanel != null && tabControl1.SelectedTab == tabPage1)
+                {
+                    myStatusLabel.Text = $"📋 Chờ gửi: {_cardPanel.PendingCount}   |   Tổng card: {_cardPanel.TotalCount}";
+                    return;
+                }
+
+                // --- Phần cũ giữ nguyên cho tab Đóng Issue ---
                 int createTotal = 0, createSelected = 0;
                 int ticketTotal = 0, ticketSelected = 0;
 
@@ -573,99 +609,119 @@ namespace GhiIssue
         private async void BtnSyncToken_Click(object sender, EventArgs e)
         {
             DialogResult dialogResult = MessageBox.Show(
-                "Bạn có muốn đăng nhập lại để lấy Token và làm mới TOÀN BỘ dữ liệu (Tiêu đề Sheet, Tag, Người xử lý...) không?",
-                "Đồng bộ Token",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
+                "Bạn có muốn lấy Token mới và làm mới TOÀN BỘ dữ liệu không?\n\n" +
+                "- Tải lại Tag, Phân loại (Từ OmiCRM).\n" +
+                "- Tải lại Tiêu đề, Mô tả, Type Issue và MAPPING (Từ Google Sheet).\n\n" +
+                "💡 Yên tâm: Các thông tin bạn đang nhập dở trên thẻ sẽ ĐƯỢC GIỮ NGUYÊN!",
+                "Đồng bộ Dữ liệu", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (dialogResult == DialogResult.Yes)
             {
+                // Xóa Token cũ để ép lấy lại Token mới nhất
                 if (File.Exists(tokenFilePath)) File.Delete(tokenFilePath);
                 OMICRM_TOKEN = "";
 
-                // 1. Lấy Token mới và load lại Tag / Category
+                Cursor.Current = Cursors.WaitCursor;
+
+                // 1. Đăng nhập để lấy Token mới
                 await PerformLoginSequenceAsync();
 
-                // 2. ÉP TẢI LẠI GOOGLE SHEET MỚI NHẤT
+                // 2. Kéo dữ liệu mới từ API & Tự động lưu file Cache + Cập nhật Card UI
+                if (!string.IsNullOrEmpty(OMICRM_TOKEN))
+                {
+                    await SyncCategoriesBackgroundAsync();
+                    await SyncTagsBackgroundAsync();
+                }
+
+                // 3. Kéo dữ liệu mới từ Sheet (Kèm Mapping) & Tự động lưu file Cache + Cập nhật Card UI
                 await SyncTitlesBackgroundAsync();
 
                 UpdateStatusCount();
-
-                MessageBox.Show("Đã đồng bộ Token và tải lại toàn bộ danh mục MỚI NHẤT!", "Hoàn tất", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Cursor.Current = Cursors.Default;
+                MessageBox.Show("Tuyệt vời! Đã đồng bộ Token và nạp toàn bộ danh mục, Mapping, Tag MỚI NHẤT!", "Hoàn tất", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
+        //private void BtnBulkEdit_Click(object sender, EventArgs e)
+        //{
+        //    if (dgvCreateTickets.SelectedRows.Count < 2)
+        //    {
+        //        MessageBox.Show("Vui lòng bôi đen (chọn) từ 2 dòng trở lên ở cột ngoài cùng bên trái để sử dụng tính năng sửa hàng loạt!", "Hướng dẫn", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        //        return;
+        //    }
+
+        //    Form popup = new Form()
+        //    {
+        //        Width = 350,
+        //        Height = 220,
+        //        FormBorderStyle = FormBorderStyle.FixedDialog,
+        //        Text = "Sửa dữ liệu hàng loạt",
+        //        StartPosition = FormStartPosition.CenterScreen,
+        //        MaximizeBox = false
+        //    };
+
+        //    Label lbl1 = new Label() { Left = 20, Top = 20, Text = "Chọn Cột cần đổi:", AutoSize = true };
+        //    ComboBox cbColumn = new ComboBox() { Left = 20, Top = 40, Width = 290, DropDownStyle = ComboBoxStyle.DropDownList };
+        //    // Đã xóa Chủ đề & Phân loại khỏi Bulk Edit vì đã gán cứng
+        //    cbColumn.Items.AddRange(new string[] { "Tiêu đề", "Tag", "Người xử lý" });
+
+        //    Label lbl2 = new Label() { Left = 20, Top = 80, Text = "Chọn Giá trị mới:", AutoSize = true };
+        //    ComboBox cbValue = new ComboBox() { Left = 20, Top = 100, Width = 290, DropDownStyle = ComboBoxStyle.DropDownList };
+
+        //    cbColumn.SelectedIndexChanged += (s, ev) =>
+        //    {
+        //        cbValue.DataSource = null;
+        //        cbValue.Items.Clear();
+        //        string selCol = cbColumn.SelectedItem.ToString();
+
+        //        if (selCol == "Tiêu đề") { cbValue.DataSource = defaultTitles; cbValue.DisplayMember = "Title"; cbValue.ValueMember = "Title"; }
+        //        else if (selCol == "Tag") { cbValue.DataSource = tagList; cbValue.DisplayMember = "name"; cbValue.ValueMember = "id"; }
+        //        else if (selCol == "Người xử lý") { cbValue.DataSource = employees; cbValue.DisplayMember = "Name"; cbValue.ValueMember = "Id"; }
+        //    };
+        //    cbColumn.SelectedIndex = 0;
+
+        //    Button btnApply = new Button() { Text = "Áp dụng", Left = 190, Top = 140, Width = 120, DialogResult = DialogResult.OK };
+        //    popup.Controls.Add(lbl1); popup.Controls.Add(cbColumn);
+        //    popup.Controls.Add(lbl2); popup.Controls.Add(cbValue);
+        //    popup.Controls.Add(btnApply); popup.AcceptButton = btnApply;
+
+        //    if (popup.ShowDialog() == DialogResult.OK)
+        //    {
+        //        string selCol = cbColumn.SelectedItem.ToString();
+        //        object newVal = cbValue.SelectedValue;
+        //        if (newVal != null)
+        //        {
+        //            dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
+        //            foreach (DataGridViewRow row in dgvCreateTickets.SelectedRows)
+        //            {
+        //                if (row.IsNewRow) continue;
+        //                if (selCol == "Tiêu đề")
+        //                {
+        //                    row.Cells["colTitle"].Value = newVal;
+        //                    var match = defaultTitles.FirstOrDefault(t => t.Title.Equals(newVal.ToString(), StringComparison.OrdinalIgnoreCase));
+        //                    if (match != null) row.Cells["colGroup"].Value = match.Group;
+        //                }
+        //                else if (selCol == "Tag") { row.Cells["colTag"].Value = newVal; }
+        //                else if (selCol == "Người xử lý") { row.Cells["colAssignee"].Value = newVal; }
+        //            }
+        //            dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
+
+        //            // Ghi log hành động Sửa hàng loạt
+        //            string displayValue = cbValue.Text; // Lấy tên hiển thị chữ thay vì ID
+        //            WriteLog("INFO", $"Sửa hàng loạt {dgvCreateTickets.SelectedRows.Count} dòng", $"Cột: {selCol} -> Giá trị mới: {displayValue}");
+
+        //            MessageBox.Show($"Đã thay đổi hàng loạt cho {dgvCreateTickets.SelectedRows.Count} dòng!", "Thành công");
+        //            UpdateStatusCount();
+        //        }
+        //    }
+        //}
         private void BtnBulkEdit_Click(object sender, EventArgs e)
         {
-            if (dgvCreateTickets.SelectedRows.Count < 2)
+            if (tabControl1.SelectedTab == tabPage1)
             {
-                MessageBox.Show("Vui lòng bôi đen (chọn) từ 2 dòng trở lên ở cột ngoài cùng bên trái để sử dụng tính năng sửa hàng loạt!", "Hướng dẫn", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            Form popup = new Form()
-            {
-                Width = 350,
-                Height = 220,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                Text = "Sửa dữ liệu hàng loạt",
-                StartPosition = FormStartPosition.CenterScreen,
-                MaximizeBox = false
-            };
-
-            Label lbl1 = new Label() { Left = 20, Top = 20, Text = "Chọn Cột cần đổi:", AutoSize = true };
-            ComboBox cbColumn = new ComboBox() { Left = 20, Top = 40, Width = 290, DropDownStyle = ComboBoxStyle.DropDownList };
-            // Đã xóa Chủ đề & Phân loại khỏi Bulk Edit vì đã gán cứng
-            cbColumn.Items.AddRange(new string[] { "Tiêu đề", "Tag", "Người xử lý" });
-
-            Label lbl2 = new Label() { Left = 20, Top = 80, Text = "Chọn Giá trị mới:", AutoSize = true };
-            ComboBox cbValue = new ComboBox() { Left = 20, Top = 100, Width = 290, DropDownStyle = ComboBoxStyle.DropDownList };
-
-            cbColumn.SelectedIndexChanged += (s, ev) =>
-            {
-                cbValue.DataSource = null;
-                cbValue.Items.Clear();
-                string selCol = cbColumn.SelectedItem.ToString();
-
-                if (selCol == "Tiêu đề") { cbValue.DataSource = defaultTitles; cbValue.DisplayMember = "Title"; cbValue.ValueMember = "Title"; }
-                else if (selCol == "Tag") { cbValue.DataSource = tagList; cbValue.DisplayMember = "name"; cbValue.ValueMember = "id"; }
-                else if (selCol == "Người xử lý") { cbValue.DataSource = employees; cbValue.DisplayMember = "Name"; cbValue.ValueMember = "Id"; }
-            };
-            cbColumn.SelectedIndex = 0;
-
-            Button btnApply = new Button() { Text = "Áp dụng", Left = 190, Top = 140, Width = 120, DialogResult = DialogResult.OK };
-            popup.Controls.Add(lbl1); popup.Controls.Add(cbColumn);
-            popup.Controls.Add(lbl2); popup.Controls.Add(cbValue);
-            popup.Controls.Add(btnApply); popup.AcceptButton = btnApply;
-
-            if (popup.ShowDialog() == DialogResult.OK)
-            {
-                string selCol = cbColumn.SelectedItem.ToString();
-                object newVal = cbValue.SelectedValue;
-                if (newVal != null)
-                {
-                    dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
-                    foreach (DataGridViewRow row in dgvCreateTickets.SelectedRows)
-                    {
-                        if (row.IsNewRow) continue;
-                        if (selCol == "Tiêu đề")
-                        {
-                            row.Cells["colTitle"].Value = newVal;
-                            var match = defaultTitles.FirstOrDefault(t => t.Title.Equals(newVal.ToString(), StringComparison.OrdinalIgnoreCase));
-                            if (match != null) row.Cells["colGroup"].Value = match.Group;
-                        }
-                        else if (selCol == "Tag") { row.Cells["colTag"].Value = newVal; }
-                        else if (selCol == "Người xử lý") { row.Cells["colAssignee"].Value = newVal; }
-                    }
-                    dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
-
-                    // Ghi log hành động Sửa hàng loạt
-                    string displayValue = cbValue.Text; // Lấy tên hiển thị chữ thay vì ID
-                    WriteLog("INFO", $"Sửa hàng loạt {dgvCreateTickets.SelectedRows.Count} dòng", $"Cột: {selCol} -> Giá trị mới: {displayValue}");
-
-                    MessageBox.Show($"Đã thay đổi hàng loạt cho {dgvCreateTickets.SelectedRows.Count} dòng!", "Thành công");
-                    UpdateStatusCount();
-                }
+                // Nếu đang ở tab Tạo phiếu, nút này sẽ dọn dẹp các thẻ trống
+                _cardPanel?.ClearEmptyCards();
+                UpdateStatusCount();
             }
         }
 
@@ -689,7 +745,9 @@ namespace GhiIssue
             }
 
             if (dgvCreateTickets != null && dgvCreateTickets.IsCurrentCellInEditMode) dgvCreateTickets.EndEdit();
-            SaveDraft();
+            // ✅ THÊM MỚI: lưu nháp card UI khi thoát
+            SaveDraftCards();
+            //SaveDraft(); // giữ lại để backup, không ảnh hưởng gì
         }
 
         //private async void SetupOmicallWebView()
@@ -899,16 +957,18 @@ namespace GhiIssue
                 cboEmployees.TextUpdate += cboEmployees_TextUpdate;
             }
 
-            SetupCreateTicketGrid();
+            SetupCreateTicketGrid(); // Giữ nguyên (dgvCreateTickets vẫn cần init)
+            SetupCardUI();           // ✅ THÊM MỚI: khởi tạo card UI
             CheckAndDownloadUpdateAsync();
             await PerformLoginSequenceAsync();
 
             AutoAssignFromEmail(loginEmailCached);
             HookStatusStrip();
-            LoadDraft();
+            LoadDraft();             // Giữ nguyên (để backup)
+            LoadDraftCards();
 
             //if (dgvCreateTickets.Rows.Count <= 1) btnAddRow_Click(null, null);
-            EnsureSufficientRows(100);
+            EnsureSufficientRows(5);
             // BƯỚC 2: CHẠY NGẦM BACKGROUND ĐỂ TẢI SHEET & API TAG
             _ = Task.Run(async () =>
             {
@@ -1077,6 +1137,10 @@ namespace GhiIssue
 
                                 // ĐÃ XÓA dòng ép kiểu colDesc thành ComboBox để không bị lỗi "sai be bét" nữa
                             }
+                            // ✅ THÊM MỚI: cập nhật card UI
+                            CardUI_RefreshTitles();
+                            CardUI_RefreshTypeIssues();
+                            CardUI_RefreshDescriptions();
                         }));
                     }
                 }
@@ -1114,6 +1178,8 @@ namespace GhiIssue
                                     var allSubs = categoryList.Where(c => c.types != null).SelectMany(c => c.types).ToList();
                                     colSub.DataSource = allSubs;
                                 }
+                                // ✅ THÊM MỚI: cập nhật card UI
+                                CardUI_RefreshCategories();
                             }));
                         }
                     }
@@ -1158,6 +1224,8 @@ namespace GhiIssue
                             tagList = freshList.OrderBy(t => t.name).ToList();
                             if (dgvCreateTickets != null && dgvCreateTickets.Columns.Contains("colTag"))
                                 ((DataGridViewComboBoxColumn)dgvCreateTickets.Columns["colTag"]).DataSource = tagList;
+                            // ✅ THÊM MỚI: cập nhật card UI
+                            CardUI_RefreshTags();
                         }));
                     }
                 }
@@ -1244,6 +1312,8 @@ namespace GhiIssue
             if (!string.IsNullOrEmpty(empId))
             {
                 defaultAssigneeId = empId;
+                // ✅ THÊM MỚI: set người xử lý mặc định cho card UI
+                CardUI_SetDefaultAssignee(empId);
                 var me = employees.FirstOrDefault(e => e.Id == empId);
                 if (me != null && cboEmployees != null)
                 {
@@ -1306,14 +1376,29 @@ namespace GhiIssue
         // ================== BẮT PHÍM TẮT & HACK WINFORMS ==================
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            // TÍNH NĂNG MỚI: BẤM CTRL + F ĐỂ TÌM KIẾM MỌI LÚC MỌI NƠI
+            // Phím tắt tìm kiếm hiện tại
             if (keyData == (Keys.Control | Keys.F))
             {
                 SearchGlobalTicket();
-                return true; // Chặn phím tắt lại không truyền đi nữa
+                return true;
             }
 
-            // Bắt trọn ổ: Ép WinForms lướt sang ngang thay vì rớt dòng khi gõ tạo phiếu
+            // 🌟 THÊM MỚI 1: Ctrl + Enter để Tạo phiếu nhanh
+            if (keyData == (Keys.Control | Keys.Enter))
+            {
+                // Gọi hàm tạo phiếu theo Card UI mới
+                btnCreateTicket_CardClick(null, null);
+                return true;
+            }
+
+            // 🌟 THÊM MỚI 2: Alt + T để điền giờ hiện tại vào Card đang focus
+            if (keyData == (Keys.Alt | Keys.T))
+            {
+                FillCurrentTimeIntoFocusedCard();
+                return true;
+            }
+
+            // Xử lý phím Enter lướt ngang hiện tại
             if (keyData == Keys.Enter && (dgvCreateTickets.Focused || dgvCreateTickets.EditingControl != null))
             {
                 if (dgvCreateTickets.IsCurrentCellInEditMode) dgvCreateTickets.CommitEdit(DataGridViewDataErrorContexts.Commit);
@@ -1321,6 +1406,81 @@ namespace GhiIssue
                 return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+        private void FillCurrentTimeIntoFocusedCard()
+        {
+            if (_cardPanel == null) return;
+            string currentTime = DateTime.Now.ToString("HH:mm");
+
+            // Duyệt qua toàn bộ card để tìm card đang được trỏ chuột vào
+            foreach (var card in _cardPanel.AllCards)
+            {
+                if (card.ContainsFocus)
+                {
+                    // Ưu tiên: Nếu Giờ Nhận đang trống -> Điền Giờ Nhận. Nếu có rồi -> Điền Giờ Xong.
+                    if (string.IsNullOrEmpty(card.StartTime))
+                    {
+                        card.StartTime = currentTime;
+                    }
+                    else if (string.IsNullOrEmpty(card.EndTime))
+                    {
+                        card.EndTime = currentTime;
+                    }
+                    return; // Xong việc thì thoát
+                }
+            }
+        }
+        // 🌟 TÍNH NĂNG MỚI: TOAST NOTIFICATION KHÔNG BLOCK LUỒNG
+        private void ShowToast(string message, Color bgColor)
+        {
+            // Đảm bảo chạy trên luồng UI chính
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action(() => ShowToast(message, bgColor)));
+                return;
+            }
+
+            Label toast = new Label()
+            {
+                Text = message,
+                BackColor = bgColor,
+                ForeColor = Color.White,
+                AutoSize = false,
+                Width = 450,
+                Height = 40,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            };
+
+            // Bo góc nhẹ nhàng cho Toast đẹp hơn
+            System.Drawing.Drawing2D.GraphicsPath path = new System.Drawing.Drawing2D.GraphicsPath();
+            int radius = 10;
+            path.AddArc(0, 0, radius, radius, 180, 90);
+            path.AddArc(toast.Width - radius, 0, radius, radius, 270, 90);
+            path.AddArc(toast.Width - radius, toast.Height - radius, radius, radius, 0, 90);
+            path.AddArc(0, toast.Height - radius, radius, radius, 90, 90);
+            toast.Region = new Region(path);
+
+            // Canh giữa ở cạnh dưới màn hình, đè lên thanh Status Strip
+            toast.Left = (this.ClientSize.Width - toast.Width) / 2;
+            toast.Top = this.ClientSize.Height - toast.Height - 30;
+            toast.Anchor = AnchorStyles.Bottom;
+
+            this.Controls.Add(toast);
+            toast.BringToFront();
+
+            // Dùng Timer để tự động tắt sau 3 giây
+            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+            timer.Interval = 3000;
+            timer.Tick += (s, e) =>
+            {
+                // Hiệu ứng mờ dần (nếu muốn làm phức tạp hơn thì dùng Timer chạy opacity, ở đây ta xóa luôn cho nhẹ)
+                this.Controls.Remove(toast);
+                toast.Dispose();
+                timer.Stop();
+                timer.Dispose();
+            };
+            timer.Start();
         }
 
         // =========================================================================
@@ -1634,7 +1794,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "5.1"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
+            string currentVersion = "6.0"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -2472,7 +2632,7 @@ namespace GhiIssue
                     }
                 }
             }
-            SaveDraft();
+            SaveDraftCards();
         }
 
         private void DgvCreateTickets_CellValueChanged(object sender, DataGridViewCellEventArgs e)
@@ -2980,7 +3140,7 @@ namespace GhiIssue
                     if (!dgvCreateTickets.Rows[rIndex].IsNewRow) dgvCreateTickets.Rows.RemoveAt(rIndex);
                 }
                 dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
-                EnsureSufficientRows(100); // Xóa xong tự bù lại cho đủ 30 dòng
+                EnsureSufficientRows(5); // Xóa xong tự bù lại cho đủ 30 dòng
                 UpdateStatusCount();
             }
         }
@@ -2992,8 +3152,8 @@ namespace GhiIssue
                 dgvCreateTickets.CellValueChanged -= DgvCreateTickets_CellValueChanged;
                 dgvCreateTickets.Rows.Clear();
                 dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
-                EnsureSufficientRows(100);
-                SaveDraft();
+                EnsureSufficientRows(5);
+                SaveDraftCards();
                 UpdateStatusCount();
             }
         }
@@ -3020,7 +3180,7 @@ namespace GhiIssue
                     dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
 
                     // Tự động bù lại dòng trống ở cuối bảng để luôn giữ mức 30 dòng
-                    EnsureSufficientRows(100);
+                    EnsureSufficientRows(5);
                     UpdateStatusCount();
                 }
             }
@@ -3347,7 +3507,8 @@ namespace GhiIssue
             }
 
             Cursor.Current = Cursors.Default;
-            MessageBox.Show($"Xong! Đã tạo thành công {successCount} phiếu.", "Kết quả");
+            //MessageBox.Show($"Xong! Đã tạo thành công {successCount} phiếu.", "Kết quả");
+            ShowToast($"✅ Xong! Đã tạo thành công {successCount} phiếu.", Color.MediumSeaGreen);
 
             if (successCount > 0)
             {
@@ -3384,8 +3545,8 @@ namespace GhiIssue
                 }
                 dgvCreateTickets.CellValueChanged += DgvCreateTickets_CellValueChanged;
 
-                EnsureSufficientRows(100);
-                SaveDraft();
+                EnsureSufficientRows(5);
+                SaveDraftCards();
             }
         }
 
@@ -4136,19 +4297,15 @@ namespace GhiIssue
         // =========================================================================
         private void btnTheme_Click(object sender, EventArgs e)
         {
-            Form popup = new Form() { Width = 350, Height = 300, Text = "Phối màu Giao diện", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
+            Form popup = new Form() { Width = 350, Height = 250, Text = "Phối màu Giao diện Card", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
 
-            Label lbl1 = new Label() { Text = "Màu Tiêu đề cột:", Left = 20, Top = 20, AutoSize = true };
-            Button btnHeader = new Button() { Left = 150, Top = 15, Width = 150, BackColor = dgvCreateTickets.ColumnHeadersDefaultCellStyle.BackColor.IsEmpty ? SystemColors.Control : dgvCreateTickets.ColumnHeadersDefaultCellStyle.BackColor, FlatStyle = FlatStyle.Flat };
+            Label lbl1 = new Label() { Text = "Màu nền tổng thể:", Left = 20, Top = 30, AutoSize = true };
+            Button btnBackground = new Button() { Left = 150, Top = 25, Width = 150, BackColor = _cardPanel.BackColor, FlatStyle = FlatStyle.Flat };
 
-            Label lbl2 = new Label() { Text = "Màu dòng lẻ (Zebra):", Left = 20, Top = 60, AutoSize = true };
-            Button btnOdd = new Button() { Left = 150, Top = 55, Width = 150, BackColor = dgvCreateTickets.AlternatingRowsDefaultCellStyle.BackColor.IsEmpty ? Color.WhiteSmoke : dgvCreateTickets.AlternatingRowsDefaultCellStyle.BackColor, FlatStyle = FlatStyle.Flat };
-
-            Label lbl3 = new Label() { Text = "Màu dòng chẵn:", Left = 20, Top = 100, AutoSize = true };
-            Button btnEven = new Button() { Left = 150, Top = 95, Width = 150, BackColor = dgvCreateTickets.RowsDefaultCellStyle.BackColor.IsEmpty ? Color.White : dgvCreateTickets.RowsDefaultCellStyle.BackColor, FlatStyle = FlatStyle.Flat };
-
-            Label lbl4 = new Label() { Text = "Màu khi bôi đen:", Left = 20, Top = 140, AutoSize = true };
-            Button btnSelect = new Button() { Left = 150, Top = 135, Width = 150, BackColor = dgvCreateTickets.DefaultCellStyle.SelectionBackColor.IsEmpty ? SystemColors.Highlight : dgvCreateTickets.DefaultCellStyle.SelectionBackColor, FlatStyle = FlatStyle.Flat };
+            Label lbl2 = new Label() { Text = "Màu nền Thẻ Card:", Left = 20, Top = 80, AutoSize = true };
+            // Lấy màu nền của thẻ đầu tiên làm mẫu (nếu có), không thì mặc định Trắng
+            Color cardColor = _cardPanel.AllCards.Count > 0 ? _cardPanel.AllCards[0].BackColor : Color.White;
+            Button btnCardColor = new Button() { Left = 150, Top = 75, Width = 150, BackColor = cardColor, FlatStyle = FlatStyle.Flat };
 
             EventHandler pickColor = (s, ev) =>
             {
@@ -4157,36 +4314,21 @@ namespace GhiIssue
                 if (cd.ShowDialog() == DialogResult.OK) btn.BackColor = cd.Color;
             };
 
-            btnHeader.Click += pickColor; btnOdd.Click += pickColor; btnEven.Click += pickColor; btnSelect.Click += pickColor;
+            btnBackground.Click += pickColor; btnCardColor.Click += pickColor;
 
-            // Nút Mặc định (Mới)
-            Button btnDefault = new Button() { Text = "Mặc định", Left = 40, Top = 200, Width = 110, Height = 35, BackColor = Color.LightGray, FlatStyle = FlatStyle.Flat };
-            btnDefault.Click += (s, ev) =>
-            {
-                string themePath = Path.Combine(Application.StartupPath, "theme.txt");
-                if (File.Exists(themePath)) File.Delete(themePath); // Xóa bộ nhớ màu
+            Button btnDefault = new Button() { Text = "Mặc định", Left = 40, Top = 140, Width = 110, Height = 35, BackColor = Color.LightGray, FlatStyle = FlatStyle.Flat };
+            btnDefault.Click += (s, ev) => { _cardPanel.BackColor = Color.FromArgb(240, 242, 245); _cardPanel.ApplyThemeToCards(Color.White); popup.DialogResult = DialogResult.Abort; };
 
-                ResetThemeToDefault(); // Đưa UI về gốc
-                MessageBox.Show("Đã khôi phục giao diện về mặc định!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                popup.DialogResult = DialogResult.Abort; // Đóng popup không kích hoạt lưu
-            };
+            Button btnSave = new Button() { Text = "Lưu cấu hình", Left = 180, Top = 140, Width = 110, Height = 35, BackColor = Color.DodgerBlue, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK };
 
-            // Nút Lưu cấu hình (Đã đổi sang màu xanh lam đẹp mắt hơn)
-            Button btnSave = new Button() { Text = "Lưu cấu hình", Left = 180, Top = 200, Width = 110, Height = 35, BackColor = Color.DodgerBlue, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK };
-
-            popup.Controls.Add(lbl1); popup.Controls.Add(btnHeader);
-            popup.Controls.Add(lbl2); popup.Controls.Add(btnOdd);
-            popup.Controls.Add(lbl3); popup.Controls.Add(btnEven);
-            popup.Controls.Add(lbl4); popup.Controls.Add(btnSelect);
-            popup.Controls.Add(btnDefault); popup.Controls.Add(btnSave);
+            popup.Controls.AddRange(new Control[] { lbl1, btnBackground, lbl2, btnCardColor, btnDefault, btnSave });
             popup.AcceptButton = btnSave;
 
             if (popup.ShowDialog() == DialogResult.OK)
             {
-                ApplyTheme(btnHeader.BackColor, btnOdd.BackColor, btnEven.BackColor, btnSelect.BackColor);
-                // Lưu 4 màu vào file để lần sau mở máy vẫn nhớ
-                string config = $"{ColorTranslator.ToHtml(btnHeader.BackColor)}|{ColorTranslator.ToHtml(btnOdd.BackColor)}|{ColorTranslator.ToHtml(btnEven.BackColor)}|{ColorTranslator.ToHtml(btnSelect.BackColor)}";
-                File.WriteAllText(Path.Combine(Application.StartupPath, "theme.txt"), config);
+                _cardPanel.BackColor = btnBackground.BackColor;
+                _cardPanel.ApplyThemeToCards(btnCardColor.BackColor);
+                // Lưu lại cấu hình (nếu bạn có file theme.txt)
             }
         }
 
@@ -4209,6 +4351,10 @@ namespace GhiIssue
                 dgvTickets.AlternatingRowsDefaultCellStyle.BackColor = oddRow;
                 dgvTickets.RowsDefaultCellStyle.BackColor = evenRow;
                 dgvTickets.DefaultCellStyle.SelectionBackColor = selected;
+            }
+            if (_cardPanel != null)
+            {
+                _cardPanel.BackColor = oddRow;
             }
         }
 
@@ -4243,6 +4389,9 @@ namespace GhiIssue
 
             Button btn = sender as Button;
             if (btn != null) btn.Text = isCurrentlyHidden ? "👁️ Ẩn Phân Loại" : "👁️ Hiện Phân Loại";
+
+            // ✅ THÊM MỚI: đồng bộ trạng thái sang card UI
+            CardUI_ToggleCategory(isCurrentlyHidden);
         }
         // =========================================================================
         // ĐỘNG CƠ TỰ ĐỘNG BƠM DÒNG: LUÔN GIỮ BẢNG ĐẦY ẮP MÀ KHÔNG CẦN BẤM NÚT
@@ -4695,11 +4844,12 @@ namespace GhiIssue
                 (Prop: "Status",         Name: "Ticket Status",          IsChecked: true),
 
                 // -- CÁC CỘT THỜI GIAN NHẬN/XONG (Tùy chọn) --
+                (Prop: "NguoiNhan",      Name: "Người Xử Lý",            IsChecked: false),
                 (Prop: "TimeIn",         Name: "Thời Gian Nhận (Phụ)",   IsChecked: false),
                 (Prop: "TimeOut",        Name: "Thời Gian Xong (Phụ)",   IsChecked: false)
             };
 
-            Form popup = new Form() { Width = 400, Height = 580, Text = "Tuỳ chọn Xuất Báo Cáo", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
+            Form popup = new Form() { Width = 400, Height = 620, Text = "Tuỳ chọn Xuất Báo Cáo", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
 
             // 1. THÊM COMBOBOX CHỌN LOẠI BÁO CÁO
             Label lblType = new Label() { Text = "1. Chọn loại báo cáo:", Left = 20, Top = 20, AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
@@ -4787,6 +4937,7 @@ namespace GhiIssue
                                         case "Status": cellValue = ticket.TrangThaiHienThi; break;
                                         case "TimeIn": cellValue = ticket.ThoiGianNhan; break;
                                         case "TimeOut": cellValue = ticket.ThoiGianXong; break;
+                                        case "NguoiNhan": cellValue = ticket.NguoiNhan ?? ""; break;
                                     }
 
                                     worksheet.Cell(rowIdx, i + 1).Value = cellValue;
@@ -4953,6 +5104,13 @@ namespace GhiIssue
         private string _us;
     }
 
+    public class SmartTemplate
+    {
+        public string Title { get; set; }
+        public string Desc { get; set; }
+        public int UseCount { get; set; } // Số lần bạn đã từng tạo phiếu này
+    }
+
     public class ComboItem
     {
         public string Text { get; set; }
@@ -4973,6 +5131,11 @@ namespace GhiIssue
         public string SubCatId { get; set; }
         public string TagId { get; set; }
         public string EmpId { get; set; }
+
+        // 🌟 THÊM 3 DÒNG NÀY VÀO:
+        public string TypeIssue { get; set; }
+        public string StartTime { get; set; }
+        public string EndTime { get; set; }
     }
 
     public class Employee

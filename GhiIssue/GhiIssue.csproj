@@ -5,14 +5,17 @@
 		<Nullable>enable</Nullable>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<ApplicationIcon>black-cat_219847.ico</ApplicationIcon>
+		<ApplicationIcon>manchester_united_maidinh.ico</ApplicationIcon>
 
 		<PublishSingleFile>true</PublishSingleFile>
 		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 	</PropertyGroup>
+	<ItemGroup>
+	  <EmbeddedResource Remove="Form1_CardUI.resx" />
+	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="black-cat_219847.ico" />
+		<Content Include="manchester_united_maidinh.ico" />
 	</ItemGroup>
 
 	<ItemGroup>

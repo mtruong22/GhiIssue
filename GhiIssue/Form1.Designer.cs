@@ -161,7 +161,7 @@
             btnBulkEdit.Name = "btnBulkEdit";
             btnBulkEdit.Size = new Size(117, 57);
             btnBulkEdit.TabIndex = 3;
-            btnBulkEdit.Text = "Sửa hàng loạt";
+            btnBulkEdit.Text = "Refresh";
             btnBulkEdit.UseVisualStyleBackColor = false;
             // 
             // btnCreateTicket
@@ -357,7 +357,7 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v5.1";
+            Text = "Ghi Issue - v6.0";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();

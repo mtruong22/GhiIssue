@@ -23,6 +23,7 @@ namespace GhiIssue
         private BindingList<ComboItem> _descList;
         private List<Employee> _employeeList;
         private bool _suspendDataChanged;
+        private List<SmartTemplate> _smartTemplates = new();
 
         // ==================== EVENTS ====================
         public event EventHandler DeleteRequested;
@@ -111,6 +112,31 @@ namespace GhiIssue
             InitializeComponent();
             SetStyle(ControlStyles.DoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
 
+            // Code chặn lăn chuột
+            if (cboTag != null) cboTag.MouseWheel += PreventComboBoxScroll;
+            if (cboDesc != null) cboDesc.MouseWheel += PreventComboBoxScroll;
+            if (cboTypeIssue != null) cboTypeIssue.MouseWheel += PreventComboBoxScroll;
+            if (cboAssignee != null) cboAssignee.MouseWheel += PreventComboBoxScroll;
+            if (cboTitle != null) cboTitle.MouseWheel += PreventComboBoxScroll;
+
+            // Code chặn mất chuột
+            if (cboTag != null) cboTag.DropDown += FixCursorDisappear;
+            if (cboDesc != null) cboDesc.DropDown += FixCursorDisappear;
+            if (cboTypeIssue != null) cboTypeIssue.DropDown += FixCursorDisappear;
+            if (cboAssignee != null) cboAssignee.DropDown += FixCursorDisappear;
+            if (cboTitle != null) cboTitle.DropDown += FixCursorDisappear;
+
+            // Code nút Enter
+            if (cboTag != null) cboTag.KeyDown += Navigation_KeyDown;
+            if (cboTitle != null) cboTitle.KeyDown += Navigation_KeyDown;
+            if (cboTypeIssue != null) cboTypeIssue.KeyDown += Navigation_KeyDown;
+            if (cboDesc != null) cboDesc.KeyDown += Navigation_KeyDown;
+            if (txtStartTime != null) txtStartTime.KeyDown += Navigation_KeyDown;
+            if (txtEndTime != null) txtEndTime.KeyDown += Navigation_KeyDown;
+
+            // Code tự gán thòi gian
+            if (cboTag != null) cboTag.TextChanged += AutoFillStartTime;
+            //if (cboTitle != null) cboTitle.TextChanged += AutoFillStartTime;
             // Set Placeholder cho ComboBox
             SendMessage(cboTag.Handle, CB_SETCUEBANNER, (IntPtr)0, "🏷️ Chọn Tag...");
             SendMessage(cboTitle.Handle, CB_SETCUEBANNER, (IntPtr)0, "🔎 Tiêu đề phiếu...");
@@ -125,13 +151,24 @@ namespace GhiIssue
             WireEvents();
         }
 
+        private void CboTitle_MouseWheel(object? sender, MouseEventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
         // ==================== GẮN RÀNG BUỘC VÀ SỰ KIỆN ====================
         private void WireEvents()
         {
             btnDelete.Click += (s, e) => DeleteRequested?.Invoke(this, EventArgs.Empty);
             this.Paint += TicketCardControl_Paint;
 
-            if (btnSend != null) btnSend.Click += (s, e) => SendRequested?.Invoke(this, EventArgs.Empty);
+            //if (btnSend != null) btnSend.Click += (s, e) => SendRequested?.Invoke(this, EventArgs.Empty);
+            if (btnSend != null) btnSend.Click += (s, e) =>
+            {
+                // Bắt buộc gọi hàm +2 phút ngay trước khi gửi dữ liệu lên Form1
+                AutoFillEndTime();
+                SendRequested?.Invoke(this, EventArgs.Empty);
+            };
             cboCategory.SelectedIndexChanged += (s, e) => { RefreshSubCategorySource(); FireDataChanged(); };
             cboAssignee.SelectedIndexChanged += (s, e) =>
             {
@@ -253,14 +290,35 @@ namespace GhiIssue
             int pos = cboTitle.SelectionStart;
             cboTitle.TextUpdate -= CboTitle_TextUpdate;
 
-            var filtered = string.IsNullOrEmpty(kw) ? _titleList.ToList() : _titleList.Where(t => Form1.ConvertToUnSignStatic(t.Title).Contains(kw)).ToList();
+            List<PredefinedTitle> result;
+            if (string.IsNullOrEmpty(kw))
+            {
+                // Không gõ gì → hiện top 10 hay dùng nhất
+                var lookup = _smartTemplates.ToDictionary(
+                    s => s.Title.ToLower(), s => s.UseCount);
+                result = _titleList
+                    .OrderByDescending(t => lookup.TryGetValue(t.Title.ToLower(), out int sc) ? sc : 0)
+                    .Take(10).ToList();
+            }
+            else
+            {
+                // Có keyword → chấm điểm và xếp hạng
+                result = _titleList
+                    .Select(t => new { T = t, S = Form1.ScoreTitleMatch(t, keyword, _smartTemplates) })
+                    .Where(x => x.S > 0)
+                    .OrderByDescending(x => x.S)
+                    .Take(10)
+                    .Select(x => x.T)
+                    .ToList();
+            }
 
-            // 🌟 FIX CRASH: Ép vào 1 dòng để ComboBox không bị lỗi khi rỗng
-            if (filtered.Count == 0) filtered.Add(new PredefinedTitle { Title = "Không tìm thấy template...", Group = "Khác" });
+            if (result.Count == 0)
+                result.Add(new PredefinedTitle { Title = "Không tìm thấy template...", Group = "Khác" });
 
-            cboTitle.DataSource = filtered; cboTitle.DisplayMember = "Title"; cboTitle.ValueMember = "Title";
-
-            cboTitle.DroppedDown = filtered.Count > 0;
+            cboTitle.DataSource = result;
+            cboTitle.DisplayMember = "Title";
+            cboTitle.ValueMember = "Title";
+            cboTitle.DroppedDown = result.Count > 0;
             cboTitle.Text = keyword;
             cboTitle.SelectionStart = Math.Min(pos, cboTitle.Text.Length);
             cboTitle.TextUpdate += CboTitle_TextUpdate;
@@ -399,6 +457,16 @@ namespace GhiIssue
                 GroupName = "Khác (Nhập tay)";
                 MainType = "";
             }
+            // ✅ Auto-fill Tag và TypeIssue từ lịch sử đã học
+            var smart = _smartTemplates?.FirstOrDefault(
+                s => string.Equals(s.Title, TitleText, StringComparison.OrdinalIgnoreCase));
+            if (smart != null)
+            {
+                if (!string.IsNullOrEmpty(smart.TagId) && string.IsNullOrEmpty(TagId))
+                    try { cboTag.SelectedValue = smart.TagId; UpdateStripColor(); } catch { }
+                if (!string.IsNullOrEmpty(smart.TypeIssue) && string.IsNullOrEmpty(TypeIssueName))
+                    cboTypeIssue.Text = smart.TypeIssue;
+            }
         }
 
         // ==================== TIME FORMATTER (Tự động thêm :) ====================
@@ -449,7 +517,15 @@ namespace GhiIssue
             _suspendDataChanged = true;
             _tagList = tags; _categoryList = categories; _titleList = titles;
             _typeIssueList = typeIssues; _descList = techActions; _employeeList = employees;
-
+            _employeeList = employees;
+            // ✅ Load smart templates để dùng cho gợi ý thông minh
+            try
+            {
+                string p = System.IO.Path.Combine(Application.StartupPath, "smart_templates.json");
+                if (System.IO.File.Exists(p)) _smartTemplates = System.Text.Json.JsonSerializer
+                    .Deserialize<List<SmartTemplate>>(System.IO.File.ReadAllText(p)) ?? new();
+            }
+            catch { }
             BindCombo(cboTag, new List<TagItem>(tags), "name", "id");
             BindCombo(cboTitle, titles, "Title", "Title");
             BindCombo(cboTypeIssue, new BindingList<ComboItem>(typeIssues.ToList()), "Text", "Text");
@@ -681,15 +757,17 @@ namespace GhiIssue
             // 
             // cboTag
             // 
+            cboTag.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboTag.FlatStyle = FlatStyle.Flat;
             cboTag.FormattingEnabled = true;
             cboTag.Location = new Point(56, 3);
             cboTag.Name = "cboTag";
             cboTag.Size = new Size(242, 23);
-            cboTag.TabIndex = 2;
+            cboTag.TabIndex = 1;
             // 
             // cboTypeIssue
             // 
+            cboTypeIssue.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboTypeIssue.FlatStyle = FlatStyle.Flat;
             cboTypeIssue.FormattingEnabled = true;
             cboTypeIssue.Location = new Point(304, 32);
@@ -699,15 +777,17 @@ namespace GhiIssue
             // 
             // cboTitle
             // 
+            cboTitle.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboTitle.FlatStyle = FlatStyle.Flat;
             cboTitle.FormattingEnabled = true;
             cboTitle.Location = new Point(304, 3);
             cboTitle.Name = "cboTitle";
             cboTitle.Size = new Size(242, 23);
-            cboTitle.TabIndex = 4;
+            cboTitle.TabIndex = 2;
             // 
             // txtStartTime
             // 
+            txtStartTime.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             txtStartTime.Location = new Point(552, 3);
             txtStartTime.Name = "txtStartTime";
             txtStartTime.Size = new Size(60, 23);
@@ -715,6 +795,7 @@ namespace GhiIssue
             // 
             // txtEndTime
             // 
+            txtEndTime.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             txtEndTime.Location = new Point(677, 3);
             txtEndTime.Name = "txtEndTime";
             txtEndTime.Size = new Size(60, 23);
@@ -722,6 +803,7 @@ namespace GhiIssue
             // 
             // label1
             // 
+            label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.Location = new Point(632, 9);
             label1.Name = "label1";
@@ -731,15 +813,18 @@ namespace GhiIssue
             // 
             // cboAssignee
             // 
+            cboAssignee.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            cboAssignee.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboAssignee.FlatStyle = FlatStyle.Flat;
             cboAssignee.FormattingEnabled = true;
             cboAssignee.Location = new Point(743, 3);
             cboAssignee.Name = "cboAssignee";
             cboAssignee.Size = new Size(242, 23);
-            cboAssignee.TabIndex = 8;
+            cboAssignee.TabIndex = 7;
             // 
             // btnDelete
             // 
+            btnDelete.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnDelete.FlatAppearance.BorderSize = 0;
             btnDelete.FlatStyle = FlatStyle.Flat;
             btnDelete.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
@@ -753,15 +838,18 @@ namespace GhiIssue
             // 
             // cboDesc
             // 
+            cboDesc.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboDesc.FlatStyle = FlatStyle.Flat;
             cboDesc.FormattingEnabled = true;
             cboDesc.Location = new Point(56, 32);
             cboDesc.Name = "cboDesc";
             cboDesc.Size = new Size(242, 23);
-            cboDesc.TabIndex = 10;
+            cboDesc.TabIndex = 4;
             // 
             // cboCategory
             // 
+            cboCategory.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            cboCategory.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboCategory.FlatStyle = FlatStyle.Flat;
             cboCategory.FormattingEnabled = true;
             cboCategory.Location = new Point(679, 32);
@@ -771,6 +859,8 @@ namespace GhiIssue
             // 
             // cboSubCategory
             // 
+            cboSubCategory.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            cboSubCategory.AutoCompleteMode = AutoCompleteMode.Suggest;
             cboSubCategory.FlatStyle = FlatStyle.Flat;
             cboSubCategory.FormattingEnabled = true;
             cboSubCategory.Location = new Point(835, 32);
@@ -780,6 +870,7 @@ namespace GhiIssue
             // 
             // lblResult
             // 
+            lblResult.Anchor = AnchorStyles.Right;
             lblResult.AutoSize = true;
             lblResult.Location = new Point(1032, 31);
             lblResult.Name = "lblResult";
@@ -790,24 +881,26 @@ namespace GhiIssue
             // btnSend
             // 
             btnSend.BackColor = Color.ForestGreen;
+            btnSend.Dock = DockStyle.Right;
             btnSend.FlatStyle = FlatStyle.Flat;
             btnSend.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             btnSend.Location = new Point(1124, 0);
             btnSend.Name = "btnSend";
             btnSend.Size = new Size(76, 76);
-            btnSend.TabIndex = 15;
+            btnSend.TabIndex = 9;
             btnSend.Text = "Tạo phiếu";
             btnSend.UseVisualStyleBackColor = false;
             // 
             // btnSuggest
             // 
+            btnSuggest.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             btnSuggest.Cursor = Cursors.Hand;
             btnSuggest.FlatStyle = FlatStyle.Flat;
             btnSuggest.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnSuggest.Location = new Point(552, 32);
             btnSuggest.Name = "btnSuggest";
             btnSuggest.Size = new Size(60, 24);
-            btnSuggest.TabIndex = 16;
+            btnSuggest.TabIndex = 8;
             btnSuggest.Text = "✨Gợi ý";
             btnSuggest.UseVisualStyleBackColor = true;
             btnSuggest.Click += btnSuggest_Click;
@@ -938,13 +1031,153 @@ namespace GhiIssue
             Button btn = sender as Button;
             menu.Show(btn, new Point(0, btn.Height));
         }
-        // Hàm này giúp thẻ Card tự đổi màu nền của chính nó
-        //public void ApplyTheme(Color backColor)
-        //{
-        //    if (!IsDone) // Nếu chưa làm xong thì mới đổi màu
-        //    {
-        //        this.BackColor = backColor;
-        //    }
-        //}
+        private void PreventComboBoxScroll(object sender, MouseEventArgs e)
+        {
+            // Cần ép kiểu MouseEventArgs sang HandledMouseEventArgs.
+            // Thuộc tính Handled = true sẽ báo cho WinForms biết là 
+            // "Sự kiện này đã bị chặn, đừng thực hiện hành động mặc định (đổi giá trị) nữa!"
+            if (e is HandledMouseEventArgs handledArgs)
+            {
+                handledArgs.Handled = true;
+            }
+        }
+        private void FixCursorDisappear(object sender, EventArgs e)
+        {
+            // Ép WinForms và Windows hiển thị lại con trỏ chuột mặc định
+            Cursor.Current = Cursors.Default;
+        }
+        // Biến lưu trữ lại đoạn text trước khi người dùng gõ sai
+        private Dictionary<ComboBox, string> _undoBuffers = new Dictionary<ComboBox, string>();
+
+        private void ComboBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            var cbo = sender as ComboBox;
+            if (cbo == null) return;
+
+            // Bắt tổ hợp phím Ctrl + Z
+            if (e.Control && e.KeyCode == Keys.Z)
+            {
+                if (_undoBuffers.ContainsKey(cbo))
+                {
+                    cbo.Text = _undoBuffers[cbo]; // Phục hồi text
+                    cbo.SelectionStart = cbo.Text.Length; // Đưa nháy chuột về cuối ô
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+            }
+            // Nếu gõ phím bình thường (không phải phím điều hướng), lưu lại trạng thái trước đó
+            else if (!e.Control && e.KeyCode != Keys.Enter && e.KeyCode != Keys.Left && e.KeyCode != Keys.Right)
+            {
+                _undoBuffers[cbo] = cbo.Text;
+            }
+        }
+        private void Navigation_KeyDown(object sender, KeyEventArgs e)
+        {
+            // Cần gọi chung hàm ComboBox_KeyDown ở trên để kết hợp tính năng Ctrl + Z
+            ComboBox_KeyDown(sender, e);
+
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true; // Chặn tiếng "ting" chói tai của Windows khi nhấn Enter
+
+                // Kiểm tra xem ô hiện tại đang đứng có phải là ô Tiêu đề không?
+                // (Giả sử ô tiêu đề tên là cboTitle, bạn sửa lại tên biến cho đúng nhé)
+                if (sender == cboTitle)
+                {
+                    // Logic nhảy cóc: Nếu Type Issue đã có chữ, nhảy thẳng xuống Mô tả (cboDesc)
+                    if (!string.IsNullOrWhiteSpace(cboTypeIssue.Text))
+                    {
+                        cboDesc.Focus();
+                        return; // Ngắt luôn, không chạy đoạn code Focus xuống dưới nữa
+                    }
+                }
+
+                // Cú pháp thần thánh của WinForms để giả lập phím Tab:
+                this.SelectNextControl((Control)sender, true, true, true, true);
+            }
+        }
+        private void AutoFillStartTime(object sender, EventArgs e)
+        {
+            var control = sender as Control;
+            // 1. NGĂN CHẶN LÚC LOAD: Chỉ chạy nếu người dùng đang thực sự click/gõ vào ô này
+            if (control == null || !control.Focused) return;
+
+            // 2. BỎ QUA nếu ô Giờ Nhận đã có dữ liệu
+            if (!string.IsNullOrWhiteSpace(txtStartTime.Text)) return;
+
+            // 3. KIỂM TRA ĐIỀU KIỆN TAG "VTI"
+            bool isVTI = false;
+            string currentTag = cboTag.Text;
+
+            if (!string.IsNullOrWhiteSpace(currentTag) && _tagList != null)
+            {
+                // Tìm tag đang được chọn trong danh sách _tagList
+                var selectedTag = _tagList.FirstOrDefault(t => t.name.Equals(currentTag, StringComparison.OrdinalIgnoreCase));
+
+                if (selectedTag != null)
+                {
+                    // Tìm thông tin Tag Cha dựa vào parent_id
+                    var parentTag = _tagList.FirstOrDefault(t => t.id == selectedTag.parent_id);
+
+                    // Xét đúng nếu bản thân tag có chữ VTI HOẶC tag cha có chữ VTI
+                    if (selectedTag.name.ToUpper().Contains("VTI") ||
+                       (parentTag != null && parentTag.name.ToUpper().Contains("VTI")))
+                    {
+                        isVTI = true;
+                    }
+                }
+            }
+
+            // 4. Nếu thoả mãn điều kiện, tự động gắn giờ
+            if (isVTI)
+            {
+                txtStartTime.Text = DateTime.Now.ToString("HH:mm");
+            }
+        }
+        // 1. Hàm đổi màu nền (Tính năng cũ bạn muốn lấy lại)
+        public void SetCardColor(Color color)
+        {
+            this.BackgroundImage = null; // Xoá ảnh nền nếu có
+            this.BackColor = color;
+
+            // Đảm bảo các chữ vẫn nhìn rõ trên nền màu
+            foreach (Control ctrl in this.Controls)
+            {
+                if (ctrl is Label lbl) lbl.BackColor = Color.Transparent;
+            }
+        }
+
+        // 2. Hàm chèn ảnh nền (Tính năng mới)
+        public void SetCardBackground(string imagePath)
+        {
+            if (System.IO.File.Exists(imagePath))
+            {
+                try
+                {
+                    this.BackgroundImage = Image.FromFile(imagePath);
+                    this.BackgroundImageLayout = ImageLayout.Stretch;
+
+                    // Tự động làm trong suốt toàn bộ Label để hiện ảnh nền phía dưới
+                    foreach (Control ctrl in this.Controls)
+                    {
+                        if (ctrl is Label lbl) lbl.BackColor = Color.Transparent;
+                    }
+                }
+                catch { MessageBox.Show("Không thể nạp ảnh này!"); }
+            }
+        }
+        private void AutoFillEndTime()
+        {
+            // Nếu có Giờ nhận (5 ký tự kiểu HH:mm) và Giờ hoàn thành đang trống
+            if (txtStartTime.Text.Length == 5 && string.IsNullOrEmpty(txtEndTime.Text))
+            {
+                if (TimeSpan.TryParseExact(txtStartTime.Text, @"hh\:mm", null, out TimeSpan st))
+                {
+                    // Cộng 2 phút và gán vào EndTime
+                    txtEndTime.Text = st.Add(TimeSpan.FromMinutes(2)).ToString(@"hh\:mm");
+                    FireDataChanged();
+                }
+            }
+        }
     }
 }

@@ -51,6 +51,41 @@ namespace GhiIssue
                 Margin = new Padding(0),
             };
             this.Controls.Add(_innerPanel);
+            this.SizeChanged += CardGridPanel_SizeChanged;
+        }
+        private void CardGridPanel_SizeChanged(object sender, EventArgs e)
+        {
+            UpdateCardWidths();
+        }
+        private void UpdateCardWidths()
+        {
+            if (_innerPanel == null || _innerPanel.Controls.Count == 0) return;
+
+            _innerPanel.SuspendLayout(); // Tạm dừng vẽ UI để tránh giật lag
+
+            // Lấy chiều rộng hiện tại của Panel cha, trừ đi padding (khoảng 30px để có lề 2 bên)
+            int padding = 30;
+            int targetWidth = this.ClientSize.Width - padding;
+
+            // Trừ hao thêm độ rộng của thanh cuộn dọc (nếu có xuất hiện) để tránh bị tràn gây ra thanh cuộn ngang
+            if (this.VerticalScroll.Visible || _innerPanel.VerticalScroll.Visible)
+            {
+                targetWidth -= SystemInformation.VerticalScrollBarWidth;
+            }
+
+            // Không cho phép Card bị bóp quá nhỏ gây vỡ layout (ví dụ: tối thiểu 500px)
+            if (targetWidth < 500) targetWidth = 500;
+
+            // Gán lại chiều rộng mới cho toàn bộ Card đang có
+            foreach (Control ctrl in _innerPanel.Controls)
+            {
+                if (ctrl is TicketCardControl card)
+                {
+                    card.Width = targetWidth;
+                }
+            }
+
+            _innerPanel.ResumeLayout(); // Tiếp tục vẽ lại UI
         }
 
         // ==================== BƠM DATASOURCE ====================
@@ -325,6 +360,45 @@ namespace GhiIssue
             foreach (var card in _cards)
             {
                 card.ApplyTheme(cardBackColor);
+            }
+        }
+        // Hàm truyền màu
+        public void ApplyColorToCards(Color c)
+        {
+            foreach (Control ctrl in _innerPanel.Controls)
+            {
+                if (ctrl is TicketCardControl card) card.SetCardColor(c);
+            }
+        }
+
+        // Hàm truyền ảnh
+        public void ApplyImageToCards(string path)
+        {
+            foreach (Control ctrl in _innerPanel.Controls)
+            {
+                if (ctrl is TicketCardControl card) card.SetCardBackground(path);
+            }
+        }
+        // Hàm đổi màu cho cái Khung nền lớn
+        public void SetPanelColor(Color c)
+        {
+            this.BackgroundImage = null; // Xoá ảnh nền nếu đang có
+            this.BackColor = c;
+
+            // Ép cái panel chứa card bên trong phải trong suốt thì mới thấy màu của panel cha
+            if (_innerPanel != null) _innerPanel.BackColor = Color.Transparent;
+        }
+
+        // Hàm chèn ảnh cho cái Khung nền lớn
+        public void SetPanelImage(string path)
+        {
+            if (File.Exists(path))
+            {
+                this.BackgroundImage = Image.FromFile(path);
+                this.BackgroundImageLayout = ImageLayout.Stretch;
+
+                // Làm trong suốt panel con để lộ ảnh nền ra
+                if (_innerPanel != null) _innerPanel.BackColor = Color.Transparent;
             }
         }
     }

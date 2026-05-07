@@ -443,29 +443,80 @@ namespace GhiIssue
             }
         }
         // 🌟 AI CỤC BỘ: TỰ ĐỘNG HỌC HỎI CÁC PHIẾU HAY TẠO
-        private void LearnSmartTemplate(string title, string desc)
+        private void LearnSmartTemplate(string title, string desc,
+    string tagId = "", string typeIssue = "", string catId = "")
         {
             if (string.IsNullOrEmpty(title)) return;
-
-            List<SmartTemplate> templates = new List<SmartTemplate>();
-            if (File.Exists(smartTemplatePath))
+            try
             {
-                try { templates = JsonSerializer.Deserialize<List<SmartTemplate>>(File.ReadAllText(smartTemplatePath)); } catch { }
-            }
+                List<SmartTemplate> templates = new();
+                if (File.Exists(smartTemplatePath))
+                    try
+                    {
+                        templates = JsonSerializer.Deserialize<List<SmartTemplate>>(
+                        File.ReadAllText(smartTemplatePath));
+                    }
+                    catch { }
 
-            // Tìm xem phiếu này đã từng tạo chưa
-            var existing = templates.FirstOrDefault(t => t.Title == title && t.Desc == desc);
-            if (existing != null)
-            {
-                existing.UseCount++; // Nếu có rồi thì tăng tần suất lên
-            }
-            else
-            {
-                templates.Add(new SmartTemplate { Title = title, Desc = desc, UseCount = 1 }); // Chưa có thì thêm mới
-            }
+                // Tìm theo title (không phân biệt hoa thường)
+                var existing = templates.FirstOrDefault(
+                    t => string.Equals(t.Title, title, StringComparison.OrdinalIgnoreCase));
 
-            // Lưu lại vào "Não"
-            File.WriteAllText(smartTemplatePath, JsonSerializer.Serialize(templates));
+                if (existing != null)
+                {
+                    existing.UseCount++;
+                    existing.LastUsed = DateTime.Now.ToString("o");
+                    if (!string.IsNullOrEmpty(tagId)) existing.TagId = tagId;
+                    if (!string.IsNullOrEmpty(typeIssue)) existing.TypeIssue = typeIssue;
+                    if (!string.IsNullOrEmpty(catId)) existing.CatId = catId;
+                }
+                else
+                {
+                    templates.Add(new SmartTemplate
+                    {
+                        Title = title,
+                        Desc = desc,
+                        UseCount = 1,
+                        TagId = tagId,
+                        TypeIssue = typeIssue,
+                        CatId = catId,
+                        LastUsed = DateTime.Now.ToString("o"),
+                    });
+                }
+
+                // Giữ tối đa 200 template
+                if (templates.Count > 200)
+                    templates = templates.OrderByDescending(t => t.UseCount).Take(200).ToList();
+
+                File.WriteAllText(smartTemplatePath, JsonSerializer.Serialize(templates));
+            }
+            catch { }
+        }
+        public static int ScoreTitleMatch(PredefinedTitle title, string keyword,
+    List<SmartTemplate> smartTemplates)
+        {
+            if (string.IsNullOrEmpty(keyword)) return 0;
+            string kw = ConvertToUnSignStatic(keyword.ToLower());
+            string t = ConvertToUnSignStatic(title.Title.ToLower());
+            if (t == kw) return 1000;           // Khớp chính xác
+            int score = 0;
+            if (t.StartsWith(kw)) score += 50; // Bắt đầu bằng keyword
+            if (t.Contains(kw)) score += 15; // Chứa keyword liên tục
+                                             // Khớp từng từ
+            if (kw.Split(' ').All(w => t.Contains(w))) score += 20;
+            // Fuzzy: ký tự xuất hiện theo thứ tự
+            int idx = 0;
+            foreach (char ch in kw)
+            { int f = t.IndexOf(ch, idx); if (f >= 0) { score++; idx = f + 1; } }
+            // Bonus SmartTemplate
+            var smart = smartTemplates?.FirstOrDefault(
+                s => string.Equals(s.Title, title.Title, StringComparison.OrdinalIgnoreCase));
+            if (smart != null)
+            {
+                score += Math.Min(smart.UseCount * 3, 30);
+                if ((DateTime.Now - smart.LastUsedDate).TotalDays <= 7) score += 10;
+            }
+            return score;
         }
         private void UpdateStatusCount()
         {
@@ -4297,39 +4348,50 @@ namespace GhiIssue
         // =========================================================================
         private void btnTheme_Click(object sender, EventArgs e)
         {
-            Form popup = new Form() { Width = 350, Height = 250, Text = "Phối màu Giao diện Card", StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
+            ContextMenuStrip menu = new ContextMenuStrip();
 
-            Label lbl1 = new Label() { Text = "Màu nền tổng thể:", Left = 20, Top = 30, AutoSize = true };
-            Button btnBackground = new Button() { Left = 150, Top = 25, Width = 150, BackColor = _cardPanel.BackColor, FlatStyle = FlatStyle.Flat };
+            // --- PHẦN 1: CÀI ĐẶT KHUNG NỀN (Cái khung to chứa các card) ---
+            var menuBackground = new ToolStripMenuItem("🖼️ GIAO DIỆN KHUNG NỀN");
 
-            Label lbl2 = new Label() { Text = "Màu nền Thẻ Card:", Left = 20, Top = 80, AutoSize = true };
-            // Lấy màu nền của thẻ đầu tiên làm mẫu (nếu có), không thì mặc định Trắng
-            Color cardColor = _cardPanel.AllCards.Count > 0 ? _cardPanel.AllCards[0].BackColor : Color.White;
-            Button btnCardColor = new Button() { Left = 150, Top = 75, Width = 150, BackColor = cardColor, FlatStyle = FlatStyle.Flat };
-
-            EventHandler pickColor = (s, ev) =>
-            {
-                Button btn = (Button)s;
-                ColorDialog cd = new ColorDialog() { Color = btn.BackColor };
-                if (cd.ShowDialog() == DialogResult.OK) btn.BackColor = cd.Color;
+            var itemBgColor = new ToolStripMenuItem("🎨 Chọn màu Khung");
+            itemBgColor.Click += (s, ev) => {
+                ColorDialog cd = new ColorDialog();
+                if (cd.ShowDialog() == DialogResult.OK) _cardPanel.SetPanelColor(cd.Color);
             };
 
-            btnBackground.Click += pickColor; btnCardColor.Click += pickColor;
+            var itemBgImage = new ToolStripMenuItem("🖼️ Chèn ảnh Khung");
+            itemBgImage.Click += (s, ev) => {
+                OpenFileDialog ofd = new OpenFileDialog() { Filter = "Images|*.jpg;*.png;*.jpeg" };
+                if (ofd.ShowDialog() == DialogResult.OK) _cardPanel.SetPanelImage(ofd.FileName);
+            };
 
-            Button btnDefault = new Button() { Text = "Mặc định", Left = 40, Top = 140, Width = 110, Height = 35, BackColor = Color.LightGray, FlatStyle = FlatStyle.Flat };
-            btnDefault.Click += (s, ev) => { _cardPanel.BackColor = Color.FromArgb(240, 242, 245); _cardPanel.ApplyThemeToCards(Color.White); popup.DialogResult = DialogResult.Abort; };
+            menuBackground.DropDownItems.Add(itemBgColor);
+            menuBackground.DropDownItems.Add(itemBgImage);
 
-            Button btnSave = new Button() { Text = "Lưu cấu hình", Left = 180, Top = 140, Width = 110, Height = 35, BackColor = Color.DodgerBlue, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK };
+            // --- PHẦN 2: CÀI ĐẶT CHO TỪNG CARD (Các thẻ ticket) ---
+            var menuCard = new ToolStripMenuItem("🗂️ GIAO DIỆN THẺ (CARD)");
 
-            popup.Controls.AddRange(new Control[] { lbl1, btnBackground, lbl2, btnCardColor, btnDefault, btnSave });
-            popup.AcceptButton = btnSave;
+            var itemCardColor = new ToolStripMenuItem("🎨 Chọn màu Card");
+            itemCardColor.Click += (s, ev) => {
+                ColorDialog cd = new ColorDialog();
+                if (cd.ShowDialog() == DialogResult.OK) _cardPanel.ApplyColorToCards(cd.Color);
+            };
 
-            if (popup.ShowDialog() == DialogResult.OK)
-            {
-                _cardPanel.BackColor = btnBackground.BackColor;
-                _cardPanel.ApplyThemeToCards(btnCardColor.BackColor);
-                // Lưu lại cấu hình (nếu bạn có file theme.txt)
-            }
+            var itemCardImage = new ToolStripMenuItem("🖼️ Chèn ảnh Card");
+            itemCardImage.Click += (s, ev) => {
+                OpenFileDialog ofd = new OpenFileDialog() { Filter = "Images|*.jpg;*.png;*.jpeg" };
+                if (ofd.ShowDialog() == DialogResult.OK) _cardPanel.ApplyImageToCards(ofd.FileName);
+            };
+
+            menuCard.DropDownItems.Add(itemCardColor);
+            menuCard.DropDownItems.Add(itemCardImage);
+
+            // Thêm các nhóm vào menu chính
+            menu.Items.Add(menuBackground);
+            menu.Items.Add(new ToolStripSeparator()); // Đường kẻ ngăn cách
+            menu.Items.Add(menuCard);
+
+            menu.Show(btnTheme, new Point(0, btnTheme.Height));
         }
 
         private void ApplyTheme(Color header, Color oddRow, Color evenRow, Color selected)
@@ -5108,7 +5170,15 @@ namespace GhiIssue
     {
         public string Title { get; set; }
         public string Desc { get; set; }
-        public int UseCount { get; set; } // Số lần bạn đã từng tạo phiếu này
+        public int UseCount { get; set; }
+        public string TagId { get; set; }   // ← nhớ Tag hay dùng
+        public string TypeIssue { get; set; }   // ← nhớ Type Issue hay dùng
+        public string CatId { get; set; }   // ← nhớ phân loại hay dùng
+        public string LastUsed { get; set; }   // ← thời gian dùng gần nhất
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public DateTime LastUsedDate =>
+            DateTime.TryParse(LastUsed, out var d) ? d : DateTime.MinValue;
     }
 
     public class ComboItem

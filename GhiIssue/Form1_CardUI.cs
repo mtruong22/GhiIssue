@@ -39,6 +39,7 @@ namespace GhiIssue
         private void SetupCardUI()
         {
             // 1. Tạo CardGridPanel
+            //_cardPanel.Dock = DockStyle.Fill; // Cực kỳ quan trọng để Panel tự scale theo Form1
             _cardPanel = new CardGridPanel
             {
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
@@ -199,12 +200,24 @@ namespace GhiIssue
                 string title = card.TitleText;
 
                 // Auto +2 phút nếu có time nhận nhưng quên time xong
+                //if (!string.IsNullOrEmpty(start) && string.IsNullOrEmpty(end))
+                //{
+                //    if (TimeSpan.TryParseExact(start, @"hh\:mm", null, out TimeSpan st))
+                //        card.ResultText = ""; // sẽ set qua property EndTime bên card... 
+                //    // LƯU Ý: TicketCardControl chưa expose setter cho EndTime
+                //    // → Cần thêm public setter "EndTime { set => txtEndTime.Text = value; }"
+                //}
+                // Auto +2 phút nếu có time nhận nhưng quên time xong
                 if (!string.IsNullOrEmpty(start) && string.IsNullOrEmpty(end))
                 {
                     if (TimeSpan.TryParseExact(start, @"hh\:mm", null, out TimeSpan st))
-                        card.ResultText = ""; // sẽ set qua property EndTime bên card... 
-                    // LƯU Ý: TicketCardControl chưa expose setter cho EndTime
-                    // → Cần thêm public setter "EndTime { set => txtEndTime.Text = value; }"
+                    {
+                        // Gọi thông qua Property EndTime đã được mở public của Thẻ
+                        card.EndTime = st.Add(TimeSpan.FromMinutes(2)).ToString(@"hh\:mm");
+
+                        // Quan trọng: Cập nhật lại biến 'end' để qua mặt vòng kiểm tra lỗi trống phía dưới
+                        end = card.EndTime;
+                    }
                 }
 
                 // Validate VTI
@@ -420,8 +433,31 @@ namespace GhiIssue
                 if (response.IsSuccessStatusCode && (res.Contains("\"id\"") || res.Contains("\"_id\"") || res.Contains("\"success\":true")))
                 {
                     card.ResultText = "✅ Thành công";
-                    LearnSmartTemplate(title, card.DescText);
-                    // 🌟 Tuyệt chiêu: Tự động tẩy trắng thẻ sau 1.5 giây để gõ phiếu mới
+                    LearnSmartTemplate(title, card.DescText, card.TagId, card.TypeIssueName, card.CategoryName);
+
+                    // Lấy ticket ID để push Google Sheet
+                    string ticketId = "N/A";
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(res);
+                        ticketId = doc.RootElement.GetProperty("payload").GetProperty("unique_id").GetString();
+                    }
+                    catch { }
+
+                    // ✅ THÊM: Push Google Sheet giống nút vàng
+                    string tagName = tagList.FirstOrDefault(t => t.id == card.TagId)?.name ?? card.TagId;
+                    string empName = employees.FirstOrDefault(emp => emp.Id == card.AssigneeId)?.Name ?? "";
+                    string tStatus = (!string.IsNullOrEmpty(card.StartTime) && !string.IsNullOrEmpty(card.EndTime))
+                                      ? "Đã Đóng (4)" : "Đang xử lý (1)";
+                    WriteLog("SUCCESS", $"Tạo phiếu '{title}'", $"Tag: {tagName} | NXL: {empName} | ID: {ticketId}");
+
+                    var vtiTag2 = tagList.FirstOrDefault(t => t.name.ToUpper().Contains("VTI"));
+                    if (IsCardTagVTI(card, vtiTag2))
+                        _ = SendToGoogleSheetAsync(ticketId, card.GroupName, title, card.MainType,
+                                                   card.TypeIssueName, tagName, card.DescText,
+                                                   tStatus, card.StartTime, card.EndTime);
+
+                    // Tự động tẩy trắng thẻ sau 1.5 giây
                     System.Threading.Tasks.Task.Delay(1500).ContinueWith(t => {
                         this.Invoke(new Action(() => { card.ClearAfterSuccess(); _cardPanel.EnsureMinCards(5); }));
                     });

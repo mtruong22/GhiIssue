@@ -12,6 +12,8 @@ namespace GhiIssue
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // ← THÊM DÒNG NÀY
+            Application.EnableVisualStyles();
         }
     }
 }

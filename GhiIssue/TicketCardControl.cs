@@ -281,47 +281,47 @@ namespace GhiIssue
         }
 
         // ==================== LOGIC TÌM KIẾM COMBOBOX ====================
-        // ==================== LOGIC TÌM KIẾM COMBOBOX ====================
         private void CboTitle_TextUpdate(object sender, EventArgs e)
         {
-            if (_titleList == null) return;
-            string keyword = cboTitle.Text;
-            string kw = Form1.ConvertToUnSignStatic(keyword);
-            int pos = cboTitle.SelectionStart;
-            cboTitle.TextUpdate -= CboTitle_TextUpdate;
-
-            List<PredefinedTitle> result;
-            if (string.IsNullOrEmpty(kw))
+            try
             {
-                // Không gõ gì → hiện top 10 hay dùng nhất
-                var lookup = _smartTemplates.ToDictionary(
-                    s => s.Title.ToLower(), s => s.UseCount);
-                result = _titleList
-                    .OrderByDescending(t => lookup.TryGetValue(t.Title.ToLower(), out int sc) ? sc : 0)
-                    .Take(10).ToList();
-            }
-            else
-            {
-                // Có keyword → chấm điểm và xếp hạng
-                result = _titleList
-                    .Select(t => new { T = t, S = Form1.ScoreTitleMatch(t, keyword, _smartTemplates) })
-                    .Where(x => x.S > 0)
-                    .OrderByDescending(x => x.S)
-                    .Take(10)
-                    .Select(x => x.T)
-                    .ToList();
-            }
+                if (_titleList == null) return;
+                string keyword = cboTitle.Text;
 
-            if (result.Count == 0)
-                result.Add(new PredefinedTitle { Title = "Không tìm thấy template...", Group = "Khác" });
+                // 🌟 CHỐNG CRASH: Nếu người dùng xoá sạch chữ, ngưng tìm kiếm và thoát luôn
+                if (string.IsNullOrWhiteSpace(keyword))
+                {
+                    return;
+                }
 
-            cboTitle.DataSource = result;
-            cboTitle.DisplayMember = "Title";
-            cboTitle.ValueMember = "Title";
-            cboTitle.DroppedDown = result.Count > 0;
-            cboTitle.Text = keyword;
-            cboTitle.SelectionStart = Math.Min(pos, cboTitle.Text.Length);
-            cboTitle.TextUpdate += CboTitle_TextUpdate;
+                string kw = Form1.ConvertToUnSignStatic(keyword);
+                int pos = cboTitle.SelectionStart;
+                cboTitle.TextUpdate -= CboTitle_TextUpdate;
+
+                List<PredefinedTitle> result;
+                if (string.IsNullOrEmpty(kw))
+                {
+                    var lookup = _smartTemplates.ToDictionary(s => s.Title.ToLower(), s => s.UseCount);
+                    result = _titleList.OrderByDescending(t => lookup.TryGetValue(t.Title.ToLower(), out int sc) ? sc : 0).Take(10).ToList();
+                }
+                else
+                {
+                    result = _titleList.Select(t => new { T = t, S = Form1.ScoreTitleMatch(t, keyword, _smartTemplates) })
+                                       .Where(x => x.S > 0).OrderByDescending(x => x.S).Take(10).Select(x => x.T).ToList();
+                }
+
+                if (result.Count == 0)
+                    result.Add(new PredefinedTitle { Title = "Không tìm thấy template...", Group = "Khác" });
+
+                cboTitle.DataSource = result;
+                cboTitle.DisplayMember = "Title";
+                cboTitle.ValueMember = "Title";
+                cboTitle.DroppedDown = result.Count > 0;
+                cboTitle.Text = keyword;
+                cboTitle.SelectionStart = Math.Min(pos, cboTitle.Text.Length);
+                cboTitle.TextUpdate += CboTitle_TextUpdate;
+            }
+            catch { /* Bỏ qua lỗi vặt trên máy yếu để tránh văng app */ }
         }
 
         private void CboTag_TextUpdate(object sender, EventArgs e)
@@ -349,46 +349,67 @@ namespace GhiIssue
 
         private void CboTypeIssue_TextUpdate(object sender, EventArgs e)
         {
-            if (_typeIssueList == null) return;
-            string keyword = cboTypeIssue.Text;
-            string kw = Form1.ConvertToUnSignStatic(keyword);
-            int pos = cboTypeIssue.SelectionStart;
-            cboTypeIssue.TextUpdate -= CboTypeIssue_TextUpdate;
+            try
+            {
+                if (_typeIssueList == null) return;
+                string keyword = cboTypeIssue.Text;
 
-            var filtered = string.IsNullOrEmpty(kw) ? _typeIssueList.ToList() : _typeIssueList.Where(t => Form1.ConvertToUnSignStatic(t.Text).Contains(kw)).ToList();
+                // 🌟 CHỐNG CRASH TƯƠNG TỰ
+                if (string.IsNullOrWhiteSpace(keyword)) return;
 
-            // 🌟 FIX CRASH: Cảnh báo không tìm thấy nhưng vẫn cho gõ tay
-            if (filtered.Count == 0) filtered.Add(new ComboItem { Text = "Không tìm thấy Type Issue..." });
-            if (!filtered.Any(x => x.Text.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
-                filtered.Insert(0, new ComboItem { Text = keyword });
+                string kw = Form1.ConvertToUnSignStatic(keyword);
+                int pos = cboTypeIssue.SelectionStart;
+                cboTypeIssue.TextUpdate -= CboTypeIssue_TextUpdate;
 
-            cboTypeIssue.DataSource = filtered; cboTypeIssue.DisplayMember = "Text"; cboTypeIssue.ValueMember = "Text";
+                var filtered = string.IsNullOrEmpty(kw) ? _typeIssueList.ToList() : _typeIssueList.Where(t => Form1.ConvertToUnSignStatic(t.Text).Contains(kw)).ToList();
 
-            cboTypeIssue.DroppedDown = filtered.Count > 0;
-            cboTypeIssue.Text = keyword;
-            cboTypeIssue.SelectionStart = Math.Min(pos, cboTypeIssue.Text.Length);
-            cboTypeIssue.TextUpdate += CboTypeIssue_TextUpdate;
+                if (filtered.Count == 0) filtered.Add(new ComboItem { Text = "Không tìm thấy Type Issue..." });
+                if (!filtered.Any(x => x.Text.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
+                    filtered.Insert(0, new ComboItem { Text = keyword });
+
+                cboTypeIssue.DataSource = filtered;
+                cboTypeIssue.DisplayMember = "Text";
+                cboTypeIssue.ValueMember = "Text";
+                cboTypeIssue.DroppedDown = filtered.Count > 0;
+                cboTypeIssue.Text = keyword;
+                cboTypeIssue.SelectionStart = Math.Min(pos, cboTypeIssue.Text.Length);
+                cboTypeIssue.TextUpdate += CboTypeIssue_TextUpdate;
+            }
+            catch { }
         }
 
         private void CboDesc_TextUpdate(object sender, EventArgs e)
         {
-            if (_descList == null) return;
-            string keyword = cboDesc.Text;
-            string kw = Form1.ConvertToUnSignStatic(keyword);
-            int pos = cboDesc.SelectionStart;
-            cboDesc.TextUpdate -= CboDesc_TextUpdate;
+            try
+            {
+                if (_descList == null) return;
+                string keyword = cboDesc.Text;
 
-            var filtered = string.IsNullOrEmpty(kw) ? _descList.ToList() : _descList.Where(t => Form1.ConvertToUnSignStatic(t.Text).Contains(kw)).ToList();
+                if (string.IsNullOrWhiteSpace(keyword)) return;
 
-            // 🌟 FIX CRASH: Nhét chữ đang gõ vào
-            if (filtered.Count == 0) filtered.Add(new ComboItem { Text = keyword });
+                string kw = Form1.ConvertToUnSignStatic(keyword);
+                int pos = cboDesc.SelectionStart;
+                cboDesc.TextUpdate -= CboDesc_TextUpdate;
 
-            cboDesc.DataSource = filtered; cboDesc.DisplayMember = "Text"; cboDesc.ValueMember = "Text";
+                var filtered = string.IsNullOrEmpty(kw) ? _descList.ToList() : _descList.Where(t => Form1.ConvertToUnSignStatic(t.Text).Contains(kw)).ToList();
 
-            cboDesc.DroppedDown = filtered.Count > 0;
-            cboDesc.Text = keyword;
-            cboDesc.SelectionStart = Math.Min(pos, cboDesc.Text.Length);
-            cboDesc.TextUpdate += CboDesc_TextUpdate;
+                // 🌟 SỬA CHỖ NÀY: Bắt buộc nhét chữ đang gõ vào list DÙ CÓ GỢI Ý HAY KHÔNG
+                // Để WinForms hiểu đây là chữ hợp lệ và không tự ý xoá nó đi
+                if (!filtered.Any(x => x.Text.Equals(keyword, StringComparison.OrdinalIgnoreCase)))
+                {
+                    filtered.Insert(0, new ComboItem { Text = keyword });
+                }
+
+                cboDesc.DataSource = filtered;
+                cboDesc.DisplayMember = "Text";
+                cboDesc.ValueMember = "Text";
+
+                cboDesc.DroppedDown = filtered.Count > 0;
+                cboDesc.Text = keyword;
+                cboDesc.SelectionStart = Math.Min(pos, cboDesc.Text.Length);
+                cboDesc.TextUpdate += CboDesc_TextUpdate;
+            }
+            catch { }
         }
 
         private void CboAssignee_TextUpdate(object sender, EventArgs e)
@@ -1073,27 +1094,26 @@ namespace GhiIssue
         }
         private void Navigation_KeyDown(object sender, KeyEventArgs e)
         {
-            // Cần gọi chung hàm ComboBox_KeyDown ở trên để kết hợp tính năng Ctrl + Z
+            // Giữ tính năng Ctrl + Z
             ComboBox_KeyDown(sender, e);
 
             if (e.KeyCode == Keys.Enter)
             {
-                e.SuppressKeyPress = true; // Chặn tiếng "ting" chói tai của Windows khi nhấn Enter
+                // 1. Vẫn chặn tiếng "Ting" chói tai của Windows
+                e.Handled = true;
+                e.SuppressKeyPress = true;
 
-                // Kiểm tra xem ô hiện tại đang đứng có phải là ô Tiêu đề không?
-                // (Giả sử ô tiêu đề tên là cboTitle, bạn sửa lại tên biến cho đúng nhé)
-                if (sender == cboTitle)
+                // 2. Nhảy cóc cho ô Tiêu đề (Nếu có type issue rồi thì nhảy thẳng xuống Mô tả)
+                if (sender == cboTitle && !string.IsNullOrWhiteSpace(cboTypeIssue.Text))
                 {
-                    // Logic nhảy cóc: Nếu Type Issue đã có chữ, nhảy thẳng xuống Mô tả (cboDesc)
-                    if (!string.IsNullOrWhiteSpace(cboTypeIssue.Text))
-                    {
-                        cboDesc.Focus();
-                        return; // Ngắt luôn, không chạy đoạn code Focus xuống dưới nữa
-                    }
+                    string savedTitle = cboTitle.Text; // Lưu tạm chữ
+                    cboDesc.Focus();                   // Nhảy Focus
+                    cboTitle.Text = savedTitle;        // Dán chữ lại chống tàng hình
+                    return;
                 }
-
-                // Cú pháp thần thánh của WinForms để giả lập phím Tab:
-                this.SelectNextControl((Control)sender, true, true, true, true);
+                // Lệnh này giả lập việc bạn đang dùng ngón tay bấm phím TAB thật trên bàn phím.
+                // Nó sẽ tự động kích hoạt tính năng "chốt chữ" hoàn hảo của WinForms mà bạn vừa phát hiện!
+                SendKeys.Send("{TAB}");
             }
         }
         private void AutoFillStartTime(object sender, EventArgs e)

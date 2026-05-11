@@ -315,10 +315,15 @@ namespace GhiIssue
                         bool isVtiPush = IsCardTagVTI(card, vtiTag);
                         if (isVtiPush)
                         {
-                            string sheetGroup = card.GroupName;   // ✅ lấy từ AutoFillFromTitle
-                            string mainType = card.MainType;    // ✅ lấy từ AutoFillFromTitle
-                            string tStatus    = (!string.IsNullOrEmpty(start) && !string.IsNullOrEmpty(end)) ? "Đã Đóng (4)" : "Đang xử lý (1)";
-                            _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, type, tagName, desc, tStatus, start, end);
+                            string sheetGroup = card.GroupName;
+                            string mainType = card.MainType;
+                            string tStatus = (!string.IsNullOrEmpty(start) && !string.IsNullOrEmpty(end)) ? "Đã Đóng (4)" : "Đang xử lý (1)";
+
+                            // 🌟 Dò tìm Priority dựa vào tên phiếu đã chọn
+                            var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                            string priority = matchedTitle?.Priority ?? "";
+
+                            _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, type, tagName, desc, tStatus, start, end, priority);
                         }
                     }
                     else if (!response.IsSuccessStatusCode && res.StartsWith("<"))
@@ -451,11 +456,15 @@ namespace GhiIssue
                                       ? "Đã Đóng (4)" : "Đang xử lý (1)";
                     WriteLog("SUCCESS", $"Tạo phiếu '{title}'", $"Tag: {tagName} | NXL: {empName} | ID: {ticketId}");
 
+                    // 🌟 Dò tìm Priority dựa vào tên phiếu đã chọn
+                    var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                    string priority = matchedTitle?.Priority ?? "";
+
                     var vtiTag2 = tagList.FirstOrDefault(t => t.name.ToUpper().Contains("VTI"));
                     if (IsCardTagVTI(card, vtiTag2))
                         _ = SendToGoogleSheetAsync(ticketId, card.GroupName, title, card.MainType,
                                                    card.TypeIssueName, tagName, card.DescText,
-                                                   tStatus, card.StartTime, card.EndTime);
+                                                   tStatus, card.StartTime, card.EndTime, priority);
 
                     // Tự động tẩy trắng thẻ sau 1.5 giây
                     System.Threading.Tasks.Task.Delay(1500).ContinueWith(t => {

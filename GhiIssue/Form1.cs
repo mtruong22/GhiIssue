@@ -1124,12 +1124,11 @@ namespace GhiIssue
                             string typeVti = cols.Length >= 3 ? cols[2].Trim() : "";
                             string typeKhachLe = cols.Length >= 4 ? cols[3].Trim() : "";
                             string defaultDesc = cols.Length >= 5 ? cols[4].Trim() : "";
+                            string priorityCol = cols.Length >= 6 ? cols[5].Trim() : "";
 
                             // 🌟 LOGIC HIỂU GỘP Ô: Nếu rỗng thì lấy giá trị của dòng liền trước nó
                             if (!string.IsNullOrEmpty(groupName)) lastGroup = groupName; else groupName = lastGroup;
                             if (!string.IsNullOrEmpty(titleName)) lastTitle = titleName; else titleName = lastTitle;
-                            //if (!string.IsNullOrEmpty(typeVti)) lastTypeVti = typeVti; else typeVti = lastTypeVti;
-                            //if (!string.IsNullOrEmpty(typeKhachLe)) lastTypeKhachLe = typeKhachLe; else typeKhachLe = lastTypeKhachLe;
 
                             if (!string.IsNullOrEmpty(titleName))
                             {
@@ -1143,7 +1142,8 @@ namespace GhiIssue
                                         Group = groupName,
                                         Title = titleName,
                                         TypeIssueVTI = typeVti,
-                                        TypeIssueKhachLe = typeKhachLe
+                                        TypeIssueKhachLe = typeKhachLe,
+                                        Priority = priorityCol // 🌟 THÊM DÒNG NÀY: Gán Priority lấy được từ sheet vào bộ nhớ
                                     };
                                     freshTitles.Add(existingTitle);
                                 }
@@ -1845,7 +1845,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "6.0"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
+            string currentVersion = "6.2"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -3532,8 +3532,14 @@ namespace GhiIssue
                                     // Xác định Status để báo cáo (Đã xong hay mới Đang xử lý)
                                     string tStatus = (!string.IsNullOrEmpty(startTime) && !string.IsNullOrEmpty(endTime)) ? "Đã Đóng (4)" : "Đang xử lý (1)";
 
+                                    // 1. Dò tìm Priority từ danh sách tiêu đề đã nạp vào bộ nhớ
+                                    var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                                    string priority = matchedTitle?.Priority ?? "";
+
+                                    // 2. Gọi hàm gửi đi (Nhớ thêm biến priority vào cuối cùng nhé)
+                                    _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeIssue, tagName, desc, tStatus, startTime, endTime, priority);
                                     // Bắn lệnh lên Cloud (Đã thêm 2 biến startTime và endTime)
-                                    _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeIssue, tagName, desc, tStatus, startTime, endTime);
+                                    //_ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeIssue, tagName, desc, tStatus, startTime, endTime);
                                 }
                                 // ==============================================
 
@@ -4584,7 +4590,7 @@ namespace GhiIssue
         // =========================================================================
         // TÍNH NĂNG MỚI: GỬI BACKUP DỮ LIỆU LÊN GOOGLE SHEET CÁ NHÂN
         // =========================================================================
-        private async Task SendToGoogleSheetAsync(string id, string group, string titleVn, string mainType, string typeIssue, string location, string techAction, string ticketStatus, string timeIn, string timeOut)
+        private async Task SendToGoogleSheetAsync(string id, string group, string titleVn, string mainType, string typeIssue, string location, string techAction, string ticketStatus, string timeIn, string timeOut, string priority)
         {
             string targetUrl = string.IsNullOrEmpty(webhookReportUrl)
                 ? "https://script.google.com/macros/s/AKfycbw7p6NqXIY3Ukv3qjQVG9V1yFNvnvS_B8DeMd67y8_jKR8fSybPn1sMxcbn7nXQ3_TU/exec"
@@ -4592,7 +4598,6 @@ namespace GhiIssue
 
             using (HttpClient client = new HttpClient())
             {
-                // KHÔNG DÙNG C# ĐỂ DỊCH, TRẢ LẠI VIỆC DỊCH CHO GOOGLE SHEET
                 var body = new
                 {
                     id = id,
@@ -4602,9 +4607,10 @@ namespace GhiIssue
                     type_issue = typeIssue,
                     location = location,
                     tech_action = techAction,
-                    status = ticketStatus
-                    //time_in = timeIn,     // 🌟 THÊM GIỜ NHẬN
-                    //time_out = timeOut    // 🌟 THÊM GIỜ XONG
+                    status = ticketStatus,
+                    time_in = timeIn,
+                    time_out = timeOut,
+                    priority = priority
                 };
 
                 var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
@@ -5158,6 +5164,7 @@ namespace GhiIssue
         public string TypeIssueKhachLe { get; set; }
         public string DefaultDesc { get; set; }
         // 🌟 THAY ĐỔI: Dùng List để chứa nhiều trường hợp Mô tả (Do sheet bị Merge)
+        public string Priority { get; set; }
         public List<string> PossibleDescriptions { get; set; } = new List<string>();
 
         public override string ToString() { return Title; }

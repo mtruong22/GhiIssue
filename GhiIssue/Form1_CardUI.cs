@@ -221,6 +221,7 @@ namespace GhiIssue
                 }
 
                 // Validate VTI
+                // Validate VTI — bắt buộc Type Issue + Thời gian
                 bool isVTI = IsCardTagVTI(card, vtiTag);
                 if (isVTI && (string.IsNullOrEmpty(type) || string.IsNullOrEmpty(start) || string.IsNullOrEmpty(end)))
                 {
@@ -228,6 +229,16 @@ namespace GhiIssue
                     MessageBox.Show(
                         $"Phiếu '{title}' dùng Tag VTI/Highlands.\nBẮT BUỘC điền [Type Issue] và [Thời Gian]!",
                         "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // ✅ THÊM MỚI — Validate Khách Lẻ (Retail) theo cài đặt Admin
+                if (!isVTI && requireRetailTypeIssue && string.IsNullOrEmpty(type))
+                {
+                    Cursor.Current = Cursors.Default;
+                    MessageBox.Show(
+                        $"Phiếu '{title}' BẮT BUỘC chọn [Type Issue] cho phiếu Khách Lẻ!",
+                        "Thiếu Type Issue", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
             }
@@ -388,6 +399,14 @@ namespace GhiIssue
             {
                 Cursor.Current = Cursors.Default;
                 MessageBox.Show($"Phiếu '{title}' dùng Tag VTI/Highlands.\nBẮT BUỘC điền [Type Issue] và [Thời Gian]!", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // ✅ THÊM MỚI — Validate Khách Lẻ theo cài đặt Admin
+            if (!isVTI && requireRetailTypeIssue && string.IsNullOrEmpty(type))
+            {
+                Cursor.Current = Cursors.Default;
+                MessageBox.Show($"Phiếu '{title}' BẮT BUỘC chọn [Type Issue] cho phiếu Khách Lẻ!", "Thiếu Type Issue", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 

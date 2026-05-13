@@ -465,12 +465,19 @@ namespace GhiIssue
                     cboTypeIssue.Text = mappedType;
                     var typeMatch = _typeIssueList?.FirstOrDefault(t => t.Text.Equals(mappedType, StringComparison.OrdinalIgnoreCase));
                     MainType = typeMatch?.MainType ?? "";
+
+                    // ✅ Khóa/mở combobox theo quyền Admin
+                    cboTypeIssue.Enabled = Form1.allowEditMappedType;
+                    cboTypeIssue.BackColor = Form1.allowEditMappedType
+                        ? System.Drawing.Color.White
+                        : System.Drawing.Color.FromArgb(240, 240, 240); // xám = bị khóa
                 }
                 else
                 {
-                    // Nếu Sheet không cấu hình Type Issue thì xóa trắng
                     cboTypeIssue.Text = "";
                     MainType = "";
+                    cboTypeIssue.Enabled = true;  // ✅ Không có mapping → luôn cho sửa
+                    cboTypeIssue.BackColor = System.Drawing.Color.White;
                 }
             }
             else
@@ -561,6 +568,7 @@ namespace GhiIssue
             cboAssignee.SelectedIndex = -1; cboAssignee.Text = "";
 
             RefreshSubCategorySource();
+            FilterTypeIssues(); // ✅ Lọc Type Issue ngay khi bơm data xong
             _suspendDataChanged = false;
         }
 
@@ -592,6 +600,7 @@ namespace GhiIssue
             BindCombo(cboTag, new List<TagItem>(tags), "name", "id");
             if (!string.IsNullOrEmpty(oldId)) try { cboTag.SelectedValue = oldId; } catch { cboTag.SelectedIndex = -1; cboTag.Text = ""; }
             else { cboTag.SelectedIndex = -1; cboTag.Text = ""; }
+            FilterTypeIssues();
         }
 
         public void RefreshDescSource(BindingList<ComboItem> items)
@@ -725,6 +734,8 @@ namespace GhiIssue
             string empId = !string.IsNullOrEmpty(d.EmpId) ? d.EmpId : defaultAssigneeId;
             if (!string.IsNullOrEmpty(empId)) try { cboAssignee.SelectedValue = empId; } catch { }
 
+            // ✅ Lọc lại Type Issue theo Tag đã restore từ draft
+            FilterTypeIssues();
             _suspendDataChanged = false;
         }
 

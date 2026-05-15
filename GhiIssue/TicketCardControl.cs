@@ -244,7 +244,17 @@ namespace GhiIssue
 
             string currentText = cboTypeIssue.Text;
             BindCombo(cboTypeIssue, new BindingList<ComboItem>(filtered), "Text", "Text");
-            cboTypeIssue.Text = currentText; // Phục hồi lại chữ đang gõ
+
+            // THÊM LỆNH IF...ELSE NÀY ĐỂ XỬ LÝ TRIỆT ĐỂ
+            if (string.IsNullOrEmpty(currentText))
+            {
+                cboTypeIssue.SelectedIndex = -1;
+                cboTypeIssue.Text = "";
+            }
+            else
+            {
+                cboTypeIssue.Text = currentText; // Phục hồi lại chữ đang gõ
+            }
         }
 
         // 🌟 BẮT LỖI TÊN PHIẾU NẾU ADMIN BẬT STRICT MODE
@@ -686,7 +696,13 @@ namespace GhiIssue
             this.BackColor = Color.White; UpdateStripColor();
 
             // ✅ Rebind lại tag sau khi clear
-            if (_tagList != null) BindCombo(cboTag, _tagList, "name", "id");
+            if (_tagList != null)
+            {
+                BindCombo(cboTag, _tagList, "name", "id");
+                // THÊM 2 DÒNG NÀY ĐỂ ÉP BỎ CHỌN TAG ĐẦU TIÊN
+                cboTag.SelectedIndex = -1;
+                cboTag.Text = "";
+            }
 
             _suspendDataChanged = false;
         }

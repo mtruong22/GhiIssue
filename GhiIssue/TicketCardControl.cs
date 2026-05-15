@@ -82,7 +82,8 @@ namespace GhiIssue
 
         public string AssigneeId => cboAssignee.SelectedValue?.ToString() ?? "";
         public bool IsDone => lblResult.Text.Contains("☁️") || lblResult.Text.Contains("✅");
-        public bool HasData => !string.IsNullOrEmpty(TitleText) || !string.IsNullOrEmpty(TagId);
+        // ✅ MỚI — dùng .Text thay vì SelectedValue để tránh WinForms giữ giá trị cũ
+        public bool HasData => !string.IsNullOrEmpty(TitleText) || !string.IsNullOrEmpty(cboTag.Text.Trim());
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string ResultText
@@ -110,7 +111,9 @@ namespace GhiIssue
         public TicketCardControl()
         {
             InitializeComponent();
-            SetStyle(ControlStyles.DoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+            // ✅ Bỏ UserPaint để WinForms tự vẽ nền bằng GPU — giảm lag render rõ rệt
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+            UpdateStyles();
 
             // Code chặn lăn chuột
             if (cboTag != null) cboTag.MouseWheel += PreventComboBoxScroll;
@@ -670,12 +673,21 @@ namespace GhiIssue
         public void ClearAfterSuccess()
         {
             _suspendDataChanged = true;
-            cboTag.SelectedIndex = -1; cboTag.Text = "";
+
+            // ✅ Reset Tag: phải null DataSource trước, rồi gán lại, mới đảm bảo SelectedValue = null
+            cboTag.DataSource = null;
+            cboTag.Items.Clear();
+            cboTag.Text = "";
+
             cboTitle.SelectedIndex = -1; cboTitle.Text = "";
             cboTypeIssue.SelectedIndex = -1; cboTypeIssue.Text = "";
             cboDesc.SelectedIndex = -1; cboDesc.Text = "";
             txtStartTime.Text = ""; txtEndTime.Text = ""; lblResult.Text = "";
             this.BackColor = Color.White; UpdateStripColor();
+
+            // ✅ Rebind lại tag sau khi clear
+            if (_tagList != null) BindCombo(cboTag, _tagList, "name", "id");
+
             _suspendDataChanged = false;
         }
 
@@ -1127,43 +1139,53 @@ namespace GhiIssue
                 SendKeys.Send("{TAB}");
             }
         }
+        //private void AutoFillStartTime(object sender, EventArgs e)
+        //{
+        //    var control = sender as Control;
+        //    // 1. NGĂN CHẶN LÚC LOAD: Chỉ chạy nếu người dùng đang thực sự click/gõ vào ô này
+        //    if (control == null || !control.Focused) return;
+
+        //    // 2. BỎ QUA nếu ô Giờ Nhận đã có dữ liệu
+        //    if (!string.IsNullOrWhiteSpace(txtStartTime.Text)) return;
+
+        //    // 3. KIỂM TRA ĐIỀU KIỆN TAG "VTI"
+        //    bool isVTI = false;
+        //    string currentTag = cboTag.Text;
+
+        //    if (!string.IsNullOrWhiteSpace(currentTag) && _tagList != null)
+        //    {
+        //        // Tìm tag đang được chọn trong danh sách _tagList
+        //        var selectedTag = _tagList.FirstOrDefault(t => t.name.Equals(currentTag, StringComparison.OrdinalIgnoreCase));
+
+        //        if (selectedTag != null)
+        //        {
+        //            // Tìm thông tin Tag Cha dựa vào parent_id
+        //            var parentTag = _tagList.FirstOrDefault(t => t.id == selectedTag.parent_id);
+
+        //            // Xét đúng nếu bản thân tag có chữ VTI HOẶC tag cha có chữ VTI
+        //            if (selectedTag.name.ToUpper().Contains("VTI") ||
+        //               (parentTag != null && parentTag.name.ToUpper().Contains("VTI")))
+        //            {
+        //                isVTI = true;
+        //            }
+        //        }
+        //    }
+
+        //    // 4. Nếu thoả mãn điều kiện, tự động gắn giờ
+        //    if (isVTI)
+        //    {
+        //        txtStartTime.Text = DateTime.Now.ToString("HH:mm");
+        //    }
+        //}
         private void AutoFillStartTime(object sender, EventArgs e)
         {
             var control = sender as Control;
-            // 1. NGĂN CHẶN LÚC LOAD: Chỉ chạy nếu người dùng đang thực sự click/gõ vào ô này
             if (control == null || !control.Focused) return;
 
-            // 2. BỎ QUA nếu ô Giờ Nhận đã có dữ liệu
+            // ✅ BỎ TOÀN BỘ KHỐI KIỂM TRA VTI — luôn auto-fill cho mọi tag
             if (!string.IsNullOrWhiteSpace(txtStartTime.Text)) return;
 
-            // 3. KIỂM TRA ĐIỀU KIỆN TAG "VTI"
-            bool isVTI = false;
-            string currentTag = cboTag.Text;
-
-            if (!string.IsNullOrWhiteSpace(currentTag) && _tagList != null)
-            {
-                // Tìm tag đang được chọn trong danh sách _tagList
-                var selectedTag = _tagList.FirstOrDefault(t => t.name.Equals(currentTag, StringComparison.OrdinalIgnoreCase));
-
-                if (selectedTag != null)
-                {
-                    // Tìm thông tin Tag Cha dựa vào parent_id
-                    var parentTag = _tagList.FirstOrDefault(t => t.id == selectedTag.parent_id);
-
-                    // Xét đúng nếu bản thân tag có chữ VTI HOẶC tag cha có chữ VTI
-                    if (selectedTag.name.ToUpper().Contains("VTI") ||
-                       (parentTag != null && parentTag.name.ToUpper().Contains("VTI")))
-                    {
-                        isVTI = true;
-                    }
-                }
-            }
-
-            // 4. Nếu thoả mãn điều kiện, tự động gắn giờ
-            if (isVTI)
-            {
-                txtStartTime.Text = DateTime.Now.ToString("HH:mm");
-            }
+            txtStartTime.Text = DateTime.Now.ToString("HH:mm");
         }
         // 1. Hàm đổi màu nền (Tính năng cũ bạn muốn lấy lại)
         public void SetCardColor(Color color)
@@ -1197,15 +1219,19 @@ namespace GhiIssue
                 catch { MessageBox.Show("Không thể nạp ảnh này!"); }
             }
         }
+        private static readonly Random _rng = new Random(); // Đặt static để dùng chung, tránh tạo mới liên tục
+
         private void AutoFillEndTime()
         {
-            // Nếu có Giờ nhận (5 ký tự kiểu HH:mm) và Giờ hoàn thành đang trống
             if (txtStartTime.Text.Length == 5 && string.IsNullOrEmpty(txtEndTime.Text))
             {
                 if (TimeSpan.TryParseExact(txtStartTime.Text, @"hh\:mm", null, out TimeSpan st))
                 {
-                    // Cộng 2 phút và gán vào EndTime
-                    txtEndTime.Text = st.Add(TimeSpan.FromMinutes(2)).ToString(@"hh\:mm");
+                    // ✅ Random 1-5 phút, thiên về 1-3 (60% ra số nhỏ)
+                    int[] weightedMinutes = { 1, 1, 2, 2, 2, 3, 3, 4, 5 };
+                    int randomMin = weightedMinutes[_rng.Next(weightedMinutes.Length)];
+
+                    txtEndTime.Text = st.Add(TimeSpan.FromMinutes(randomMin)).ToString(@"hh\:mm");
                     FireDataChanged();
                 }
             }

@@ -222,14 +222,17 @@ namespace GhiIssue
 
             bool added = false;
 
-            // 1. Luôn giữ tổng số thẻ tối thiểu là 5 (Bao gồm cả thẻ rỗng và thẻ có chữ)
-            while (_cards.Count(c => !c.IsDone) < minTotal)
+            // ✅ Tính 1 lần duy nhất, không scan lại trong vòng lặp
+            int activeCnt = _cards.Count(c => !c.IsDone);
+
+            while (activeCnt < minTotal)
             {
                 AddCardCore();
+                activeCnt++;
                 added = true;
             }
 
-            // 2. Nếu thẻ DƯỚI CÙNG đã bị gõ chữ -> Đẻ thêm đúng 1 thẻ rỗng ở dưới để có chỗ gõ tiếp
+            // Nếu thẻ cuối đã có dữ liệu → thêm 1 thẻ trống để gõ tiếp
             var activeCards = _cards.Where(c => !c.IsDone).ToList();
             if (activeCards.Count > 0 && activeCards.Last().HasData)
             {
@@ -241,6 +244,9 @@ namespace GhiIssue
 
             _innerPanel.ResumeLayout();
             _isUpdatingCards = false;
+
+            // ✅ Cập nhật chiều rộng ngay sau khi thêm card — fix lỗi scale
+            if (added) UpdateCardWidths();
 
             if (added) CardsChanged?.Invoke(this, EventArgs.Empty);
         }

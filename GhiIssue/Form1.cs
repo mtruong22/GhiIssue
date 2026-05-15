@@ -18,7 +18,18 @@ namespace GhiIssue
         // ==================================================================================
         public static Dictionary<string, string> dictTypeEng = new Dictionary<string, string>();
         public static string cloudColumnConfig = "1,1,1,1,1,1,1,1,1,1,1,1,1,1"; // Mặc định bật 14 cột đầu
+        // Default realtime webhook (for backward compatibility)
         public static string webhookReportUrl = "";
+        // New: realtime webhook for ALL customers (general report)
+        public static string webhookReportUrlAll = "";
+        // New: realtime webhook specifically for VTI (will be called in addition to the general webhook)
+        public static string webhookReportUrlVTI = "";
+        // NOTE FOR DEV: SendToGoogleSheetAsync must accept an optional target webhook URL
+        // (or provide an overload/wrapper) so callers can specify webhookReportUrlAll or
+        // webhookReportUrlVTI as destination. If current SendToGoogleSheetAsync does not
+        // support a url parameter, implement a new overload:
+        //   Task SendToGoogleSheetAsync(string ticketId, ..., string priority, string targetWebhookUrl = null)
+        // and use targetWebhookUrl when non-empty.
         public class QuickFilterItem { public string Text { get; set; } = ""; public string Id { get; set; } = ""; }
         public static bool isStrictTitle = true;
         //public static bool isStrictMode = true;
@@ -56,6 +67,11 @@ namespace GhiIssue
             {
                 groupItems.Add(new QuickFilterItem { Text = $"{g.Key} ({g.Count()})", Id = g.Key });
             }
+
+            _baseGroupFilters = groupItems;
+            cbQuickGroup.DataSource = _baseGroupFilters;
+            cbQuickGroup.DisplayMember = "Text";
+            cbQuickGroup.SelectedIndex = 0;
             _baseGroupFilters = groupItems;
             cbQuickGroup.DataSource = _baseGroupFilters;
             cbQuickGroup.DisplayMember = "Text";
@@ -132,6 +148,8 @@ namespace GhiIssue
             Cursor.Current = Cursors.Default;
         }
 
+
+
         // --- LOGIC LỌC KẾT HỢP (GIAO NHAU) ---
         private void CbQuickGroup_SelectedIndexChanged(object sender, EventArgs e) { ApplyQuickFilters(); }
         private void CbQuickTag_SelectedIndexChanged(object sender, EventArgs e) { ApplyQuickFilters(); }
@@ -161,8 +179,47 @@ namespace GhiIssue
             dgvTickets.DataSource = filtered.ToList();
             UpdateStatusCount();
         }
+
+        // Tải cấu hình chung từ sheet Config (TSV public). Ghi vào các biến webhookReportUrl*.
+        private async Task LoadConfigFromSheetAsync()
+        {
+            try
+            {
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.Add("User-Agent", "GhiIssue/1.0");
+                string tsv = await client.GetStringAsync(configUrl);
+                if (string.IsNullOrEmpty(tsv)) return;
+
+                var dict = new Dictionary<string, string>();
+                var lines = tsv.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var cols = line.Split('\t');
+                    if (cols.Length >= 2)
+                    {
+                        string key = cols[0].Trim();
+                        string val = cols[1].Trim();
+                        if (!string.IsNullOrEmpty(key)) dict[key] = val;
+                    }
+                }
+
+                if (dict.TryGetValue("webhookReportUrlAll", out var all)) webhookReportUrlAll = all;
+                if (dict.TryGetValue("webhookReportUrlVTI", out var vti)) webhookReportUrlVTI = vti;
+                if (dict.TryGetValue("webhookReportUrl", out var legacy)) webhookReportUrl = legacy;
+
+                WriteLog("INFO", "LoadConfigFromSheet", $"Loaded config - All: {webhookReportUrlAll}, VTI: {webhookReportUrlVTI}");
+            }
+            catch (Exception ex)
+            {
+                WriteLog("ERROR", "LoadConfigFromSheet failed", ex.Message);
+            }
+        }
         // ==================================================================================
         // ==================================================================================
+
+        // (Removed duplicate SendToGoogleSheetAsync implementation to avoid conflict. Use the
+        // centralized SendToGoogleSheetAsync defined later in the file which handles
+        // logging and webhook selection.)
 
         // ================== CẤU HÌNH & FILE HỆ THỐNG ==================
         private string OMICRM_TOKEN = "";
@@ -228,6 +285,7 @@ namespace GhiIssue
             {
                 btnExecute.Click -= btnExecute_Click;
                 btnExecute.Click += btnExecute_Click;
+                btnGanTypeIssue.Click += (s, e) => ShowFixTypeIssueDialog();
             }
 
             // KẾT NỐI CÁC NÚT TÍNH NĂNG MỞ RỘNG
@@ -260,6 +318,7 @@ namespace GhiIssue
             {
                 btnViewOpen.Click -= BtnViewOpen_Click;
                 btnViewOpen.Click += BtnViewOpen_Click;
+                btnGanTypeIssue.Click += (s, e) => ShowFixTypeIssueDialog();
             }
             if (this.Controls.Find("btnSyncToken", true).FirstOrDefault() is Button btnSyncToken)
             {
@@ -439,6 +498,11 @@ namespace GhiIssue
 
                     // Tẩy sạch rác HTML còn sót lại
                     ticket.description = ticket.description.Replace("<br><br>", "").Replace("<br>", "").Trim();
+                // Nếu Type Issue không có -> gán thành "Chưa xác định" để thống nhất báo cáo
+                if (string.IsNullOrEmpty(ticket.TypeIssue))
+                {
+                    ticket.TypeIssue = "Chưa xác định";
+                }
                 }
             }
         }
@@ -1000,6 +1064,9 @@ namespace GhiIssue
             };
             employees = employees.OrderBy(e => e.Name).ToList();
 
+            // Try load shared config from public sheet (non-blocking)
+            _ = Task.Run(async () => { await LoadConfigFromSheetAsync(); });
+
             if (cboEmployees != null)
             {
                 cboEmployees.DataSource = employees;
@@ -1424,6 +1491,20 @@ namespace GhiIssue
             WriteLog("ERROR", context, ex?.Message);
         }
 
+        // Normalize tag text before pushing to report sheet.
+        // If tag starts with "MH |" convert to "Văn phòng trung tâm - {rest}" per requirement.
+        public static string NormalizeTagForReport(string tagName)
+        {
+            if (string.IsNullOrEmpty(tagName)) return tagName;
+            string t = tagName.Trim();
+            if (t.StartsWith("MH |", StringComparison.OrdinalIgnoreCase))
+            {
+                string rest = t.Substring(4).Trim();
+                return string.IsNullOrEmpty(rest) ? "Văn phòng trung tâm" : $"Văn phòng trung tâm - {rest}";
+            }
+            return tagName;
+        }
+
         // ================== BẮT PHÍM TẮT & HACK WINFORMS ==================
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
@@ -1845,7 +1926,7 @@ namespace GhiIssue
 
         private async void CheckAndDownloadUpdateAsync()
         {
-            string currentVersion = "6.3"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
+            string currentVersion = "6.5"; // ĐỔI SỐ VER ĐỂ CẬP NHẬT
             string versionUrl = "https://raw.githubusercontent.com/mtruong22/GhiIssue/master/version.txt";
             string exeUrl = "https://github.com/mtruong22/GhiIssue/releases/latest/download/GhiIssue.exe";
 
@@ -3521,25 +3602,29 @@ namespace GhiIssue
                                 //}
 
                                 // === BẮN DỮ LIỆU LÊN GOOGLE SHEET MỚI TẠI ĐÂY ===
-                                // 🌟 TÁI SỬ DỤNG HÀM QUÉT VTI XỊN ĐỂ KHÔNG BỎ LỌT BẤT KỲ TAG NÀO
-                                bool isVtiPush = IsRowTagVTI(row);
+                                // Always send to general webhook (for ALL customers) if configured
+                                string sheetGroup = row.Cells["colGroup"].Value?.ToString() ?? "Khác";
+                                string mainType = row.Cells["colMainType"].Value?.ToString() ?? "";
+                                string tStatus = (!string.IsNullOrEmpty(startTime) && !string.IsNullOrEmpty(endTime)) ? "Đã Đóng (4)" : "Đang xử lý (1)";
+                                var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                                string priority = matchedTitle?.Priority ?? "";
+                                string typeForPush = string.IsNullOrEmpty(typeIssue) ? "Chưa xác định" : typeIssue;
 
-                                if (isVtiPush)
+                                string generalTarget = !string.IsNullOrEmpty(webhookReportUrlAll) ? webhookReportUrlAll : webhookReportUrl;
+                                if (!string.IsNullOrEmpty(generalTarget))
                                 {
-                                    string sheetGroup = row.Cells["colGroup"].Value?.ToString() ?? "Khác";
-                                    string mainType = row.Cells["colMainType"].Value?.ToString() ?? "";
+                                    string tagForReport = NormalizeTagForReport(tagName);
+                                    // Debug log: record webhook target and payload identifiers for bulk sends
+                                    try { WriteLog("WEBHOOK", $"Bulk pre-send -> Target: {generalTarget}", $"Ticket: {ticketId} | Tag: {tagForReport} | Title: {title}"); } catch { }
+                                    _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeForPush, tagForReport, desc, tStatus, startTime, endTime, priority, generalTarget);
+                                }
 
-                                    // Xác định Status để báo cáo (Đã xong hay mới Đang xử lý)
-                                    string tStatus = (!string.IsNullOrEmpty(startTime) && !string.IsNullOrEmpty(endTime)) ? "Đã Đóng (4)" : "Đang xử lý (1)";
-
-                                    // 1. Dò tìm Priority từ danh sách tiêu đề đã nạp vào bộ nhớ
-                                    var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
-                                    string priority = matchedTitle?.Priority ?? "";
-
-                                    // 2. Gọi hàm gửi đi (Nhớ thêm biến priority vào cuối cùng nhé)
-                                    _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeIssue, tagName, desc, tStatus, startTime, endTime, priority);
-                                    // Bắn lệnh lên Cloud (Đã thêm 2 biến startTime và endTime)
-                                    //_ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeIssue, tagName, desc, tStatus, startTime, endTime);
+                                // If this is a VTI-tagged ticket, also send to VTI-specific webhook
+                                if (IsRowTagVTI(row) && !string.IsNullOrEmpty(webhookReportUrlVTI))
+                                {
+                                    string tagForReport = NormalizeTagForReport(tagName);
+                                    try { WriteLog("WEBHOOK", $"Bulk pre-send (VTI) -> Target: {webhookReportUrlVTI}", $"Ticket: {ticketId} | Tag: {tagForReport} | Title: {title}"); } catch { }
+                                    _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, typeForPush, tagForReport, desc, tStatus, startTime, endTime, priority, webhookReportUrlVTI);
                                 }
                                 // ==============================================
 
@@ -3681,11 +3766,13 @@ namespace GhiIssue
 
                     if (ticketsToClose.Count > 0)
                     {
+                        // Bỏ hỏi CSV, hỏi thẳng xác nhận đóng luôn
                         DialogResult confirm = MessageBox.Show(
                             $"Tìm thấy tổng cộng {allTickets.Count} phiếu.\n" +
                             $"- Có {ticketsToClose.Count} phiếu MỚI (sẽ được tự động ĐÓNG).\n" +
                             $"- Có {allTickets.Count - ticketsToClose.Count} phiếu ĐANG XỬ LÝ/KHÁC (sẽ giữ nguyên).\n\n" +
-                            $"Bạn có muốn thực hiện không?", "Xác nhận xử lý", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                            $"Bạn có chắc muốn tiếp tục đóng {ticketsToClose.Count} phiếu?",
+                            "Xác nhận xử lý", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
                         if (confirm == DialogResult.No) return;
                     }
@@ -3753,6 +3840,22 @@ namespace GhiIssue
                 }
             }
         }
+
+        // Thêm vào cùng chỗ khai báo các nút toolbar tab Đóng Issue
+        //Button btnFixTypeIssue = new Button()
+        //{
+        //    Text = "🔧 Gán Type Issue",
+        //    FlatStyle = FlatStyle.Flat,
+        //    BackColor = Color.FromArgb(255, 248, 220), // vàng nhạt
+        //    ForeColor = Color.DarkGoldenrod,
+        //    Cursor = Cursors.Hand,
+        //    Font = new Font("Segoe UI", 9, FontStyle.Bold),
+        //    // Đặt vị trí cạnh các nút hiện có — điều chỉnh Location cho khớp layout
+        //};
+        //btnFixTypeIssue.FlatAppearance.BorderColor = Color.Goldenrod;
+        //btnFixTypeIssue.Click += (s, e) => ShowFixTypeIssueDialog();
+        // Thêm vào tabPage hoặc panel chứa toolbar
+
         // POP-UP CHỈNH SỬA PHIẾU (ĐÃ THÊM Ô MÔ TẢ CHI TIẾT)
         // =========================================================================
         private void DgvTickets_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
@@ -4087,7 +4190,9 @@ namespace GhiIssue
                         if (key == "SHOWMAINTYPE") showMainType = (val == "TRUE");
                         if (key == "REQUIRERETAILTYPEISSUE") requireRetailTypeIssue = (val == "TRUE");
                         if (key == "ALLOW_EDIT_MAPPED_TYPE") allowEditMappedType = (val == "TRUE");
-                        if (key == "WEBHOOK_REPORT_URL") webhookReportUrl = cols[1].Trim(); // Không dùng ToUpper cho link
+                if (key == "WEBHOOK_REPORT_URL") webhookReportUrl = cols[1].Trim(); // Không dùng ToUpper cho link
+                if (key == "WEBHOOK_REPORT_URL_ALL") webhookReportUrlAll = cols[1].Trim();
+                if (key == "WEBHOOK_REPORT_URL_VTI") webhookReportUrlVTI = cols[1].Trim();
                     }
                 }
 
@@ -4127,6 +4232,11 @@ namespace GhiIssue
 
             Label lblWebhook = new Label() { Left = 30, Top = 270, Text = "Link Webhook Báo cáo (Google Sheet 14 cột):", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
             TextBox txtWebhook = new TextBox() { Left = 30, Top = 290, Width = 380, Text = webhookReportUrl };
+            // New admin fields for multi-webhook support
+            Label lblWebhookAll = new Label() { Left = 30, Top = 320, Text = "Link Webhook Báo cáo (All customers):", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+            TextBox txtWebhookAll = new TextBox() { Left = 30, Top = 340, Width = 380, Text = webhookReportUrlAll };
+            Label lblWebhookVti = new Label() { Left = 30, Top = 370, Text = "Link Webhook Báo cáo (VTI):", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+            TextBox txtWebhookVti = new TextBox() { Left = 30, Top = 390, Width = 380, Text = webhookReportUrlVTI };
 
             // 🌟 NÚT CHỌN CỘT (CẤU HÌNH MỚI CHO TƯƠNG LAI)
             Button btnColConfig = new Button() { Text = "Cấu hình cột đẩy Cloud", Left = 30, Top = 330, Width = 180, Height = 30, BackColor = Color.LightGray, FlatStyle = FlatStyle.Flat };
@@ -4155,7 +4265,7 @@ namespace GhiIssue
             {
                 Text = "LƯU LẠI && ĐỒNG BỘ",
                 Left = 120,
-                Top = 390, // Đẩy nút Save xuống dưới 1 chút
+                Top = 430, // Đẩy nút Save xuống dưới để nhường 2 ô webhook mới
                 Width = 180,
                 Height = 40,
                 BackColor = Color.Orange,
@@ -4163,7 +4273,7 @@ namespace GhiIssue
                 Font = new Font("Segoe UI", 9, FontStyle.Bold)
             };
 
-            adminPopup.Controls.AddRange(new Control[] { lbl1, chkTitle, chkType, chkDel, chkMaint, chkRetailType, chkShowMainType, chkAllowEditType, lblWebhook, txtWebhook, btnColConfig, btnSave });
+            adminPopup.Controls.AddRange(new Control[] { lbl1, chkTitle, chkType, chkDel, chkMaint, chkRetailType, chkShowMainType, chkAllowEditType, lblWebhook, txtWebhook, lblWebhookAll, txtWebhookAll, lblWebhookVti, txtWebhookVti, btnColConfig, btnSave });
 
             btnSave.Click += async (s_save, e_save) => {
                 btnSave.Enabled = false; btnSave.Text = "Đang truyền lệnh...";
@@ -4181,6 +4291,9 @@ namespace GhiIssue
                         await client.PostAsync(scriptUrl, new StringContent(JsonSerializer.Serialize(new { key = "ShowMainType", value = chkShowMainType.Checked ? "TRUE" : "FALSE" }), Encoding.UTF8, "application/json"));
                         await client.PostAsync(scriptUrl, new StringContent(JsonSerializer.Serialize(new { key = "ALLOW_EDIT_MAPPED_TYPE", value = chkAllowEditType.Checked ? "TRUE" : "FALSE" }), Encoding.UTF8, "application/json"));
                         await client.PostAsync(scriptUrl, new StringContent(JsonSerializer.Serialize(new { key = "WEBHOOK_REPORT_URL", value = txtWebhook.Text.Trim() }), Encoding.UTF8, "application/json"));
+                        // Persist new webhook keys
+                        await client.PostAsync(scriptUrl, new StringContent(JsonSerializer.Serialize(new { key = "WEBHOOK_REPORT_URL_ALL", value = txtWebhookAll.Text.Trim() }), Encoding.UTF8, "application/json"));
+                        await client.PostAsync(scriptUrl, new StringContent(JsonSerializer.Serialize(new { key = "WEBHOOK_REPORT_URL_VTI", value = txtWebhookVti.Text.Trim() }), Encoding.UTF8, "application/json"));
 
                         // LƯU BIẾN CẤU HÌNH CỘT LÊN GOOGLE SHEET CỦA ADMIN
                         await client.PostAsync(scriptUrl, new StringContent(JsonSerializer.Serialize(new { key = "CLOUD_COLUMN_CONFIG", value = cloudColumnConfig }), Encoding.UTF8, "application/json"));
@@ -4189,6 +4302,8 @@ namespace GhiIssue
                     isStrictTitle = chkTitle.Checked; isStrictType = chkType.Checked; allowDelete = chkDel.Checked; isMaintenance = chkMaint.Checked;
                     requireRetailTypeIssue = chkRetailType.Checked; showMainType = chkShowMainType.Checked; allowEditMappedType = chkAllowEditType.Checked;
                     webhookReportUrl = txtWebhook.Text.Trim();
+                    webhookReportUrlAll = txtWebhookAll.Text.Trim();
+                    webhookReportUrlVTI = txtWebhookVti.Text.Trim();
 
                     MessageBox.Show("Đã phát lệnh thành công! Bảng điều khiển chuẩn v5.1.", "Admin Master", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     adminPopup.Close();
@@ -4197,8 +4312,589 @@ namespace GhiIssue
                 finally { btnSave.Enabled = true; btnSave.Text = "LƯU LẠI && ĐỒNG BỘ"; }
             };
 
+            // ============================================================
+            // PHẦN FIX TYPEISSUE MISSING — CÓ LỌC NGÀY + PHÂN TRANG
+            // ============================================================
+
+            // Tăng chiều cao form để chứa thêm bộ lọc ngày
+            adminPopup.Height = 620;
+
+            // Label tiêu đề bộ lọc
+            Label lblDateRange = new Label()
+            {
+                Left = 10,
+                Top = 488,
+                Text = "📅 Lọc phiếu theo ngày tạo:",
+                AutoSize = true,
+                Font = new Font("Segoe UI", 8, FontStyle.Bold)
+            };
+
+            // DateTimePicker TỪ ngày
+            Label lblFrom = new Label() { Left = 10, Top = 512, Text = "Từ:", AutoSize = true };
+            DateTimePicker dtStart = new DateTimePicker()
+            {
+                Left = 35,
+                Top = 508,
+                Width = 130,
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Now.Date // mặc định: hôm nay
+            };
+
+            // DateTimePicker ĐẾN ngày
+            Label lblTo = new Label() { Left = 175, Top = 512, Text = "Đến:", AutoSize = true };
+            DateTimePicker dtEnd = new DateTimePicker()
+            {
+                Left = 202,
+                Top = 508,
+                Width = 130,
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Now.Date // mặc định: hôm nay
+            };
+
+            // Label hiển thị tiến trình
+            Label lblProgress = new Label()
+            {
+                Left = 10,
+                Top = 545,
+                Width = 400,
+                Height = 20,
+                Text = "",
+                ForeColor = Color.DarkBlue,
+                Font = new Font("Segoe UI", 8)
+            };
+
+            // Nút Fix
+            Button btnBatchFix = new Button()
+            {
+                Text = "Fix TypeIssue Missing",
+                Left = 10,
+                Top = btnSave.Top,
+                Width = 160,
+                Height = 30,
+                BackColor = Color.LightBlue,
+                FlatStyle = FlatStyle.Flat
+            };
+
+            btnBatchFix.Click += async (s_bf, e_bf) =>
+            {
+                // Validate ngày
+                if (dtStart.Value.Date > dtEnd.Value.Date)
+                {
+                    MessageBox.Show("Ngày bắt đầu không được lớn hơn ngày kết thúc!", "Lỗi ngày", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                int totalDays = (int)(dtEnd.Value.Date - dtStart.Value.Date).TotalDays + 1;
+                var confirm = MessageBox.Show(
+                    $"Quét phiếu thiếu Type Issue từ {dtStart.Value:dd/MM/yyyy} đến {dtEnd.Value:dd/MM/yyyy} ({totalDays} ngày).\n\nThao tác sẽ cập nhật trực tiếp trên OmiCRM. Tiếp tục?",
+                    "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (confirm != DialogResult.Yes) return;
+
+                btnBatchFix.Enabled = false;
+                btnBatchFix.Text = "Đang chạy...";
+                Cursor.Current = Cursors.WaitCursor;
+                lblProgress.Text = "Đang tải danh sách phiếu...";
+
+                int totalUpdated = 0;
+                int totalScanned = 0;
+
+                try
+                {
+                    using (HttpClient client = new HttpClient())
+                    {
+                        client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+
+                        // ✅ Lọc theo từng ngày để tránh tải 2000 phiếu một lúc
+                        for (DateTime day = dtStart.Value.Date; day <= dtEnd.Value.Date; day = day.AddDays(1))
+                        {
+                            long dayStartMs = new DateTimeOffset(day).ToUnixTimeMilliseconds();
+                            long dayEndMs = new DateTimeOffset(day.AddDays(1).AddTicks(-1)).ToUnixTimeMilliseconds();
+
+                            lblProgress.Text = $"📅 Đang xử lý ngày {day:dd/MM/yyyy}...";
+                            lblProgress.Refresh();
+
+                            // Tải phiếu theo ngày (page 1..N)
+                            int page = 1;
+                            bool hasMore = true;
+
+                            while (hasMore)
+                            {
+                                var searchBody = new Dictionary<string, object>
+                    {
+                        { "status_filters", new[] { "active_state" } },
+                        { "page", page }, { "size", 200 },
+                        { "current_status", new[] { 0,1,2,3,4 } },
+                        // ✅ Gửi filter ngày lên server luôn để giảm tải
+                        { "created_at_from", dayStartMs },
+                        { "created_at_to",   dayEndMs   }
+                    };
+
+                                var searchContent = new StringContent(
+                                    JsonSerializer.Serialize(searchBody), Encoding.UTF8, "application/json");
+                                var searchResp = await client.PostAsync(
+                                    "https://ticket-v2-stg.omicrm.com/ticket/search?lng=vi&utm_source=web", searchContent);
+
+                                if (!searchResp.IsSuccessStatusCode) { hasMore = false; break; }
+
+                                string searchStr = await searchResp.Content.ReadAsStringAsync();
+                                var omiResp = JsonSerializer.Deserialize<OmiResponse>(searchStr);
+                                var items = omiResp?.payload?.items ?? new List<TicketItem>();
+
+                                if (items.Count == 0) { hasMore = false; break; }
+
+                                totalScanned += items.Count;
+
+                                var vtiTag = tagList.FirstOrDefault(t => t.name.Equals("VTI", StringComparison.OrdinalIgnoreCase))
+                                          ?? tagList.FirstOrDefault(t => t.name.ToUpper().Contains("VTI"));
+
+                                foreach (var t in items)
+                                {
+                                    // Kiểm tra đã có [Type: ...] trong description chưa
+                                    bool hasType = !string.IsNullOrEmpty(t.description) &&
+                                                   new System.Text.RegularExpressions.Regex(@"\[Type:\s*.+?\]")
+                                                       .IsMatch(t.description);
+                                    if (hasType) continue;
+
+                                    // Xác định tag VTI hay không
+                                    bool isVtiTicket = false;
+                                    if (t.tags != null)
+                                    {
+                                        foreach (var tg in t.tags)
+                                        {
+                                            string tid = tg.ValueKind == System.Text.Json.JsonValueKind.Object
+                                                         && tg.TryGetProperty("id", out var idProp)
+                                                         ? idProp.GetString() : tg.ToString();
+                                            var curTag = tagList.FirstOrDefault(x => x.id == tid);
+                                            if (curTag != null &&
+                                                (curTag.name.ToUpper().Contains("VTI") ||
+                                                 curTag.name.ToUpper().Contains("HLC") ||
+                                                 (vtiTag != null && (curTag.parent_id == vtiTag.id || curTag.id == vtiTag.id))))
+                                            { isVtiTicket = true; break; }
+                                        }
+                                    }
+
+                                    // Auto-map TypeIssue theo tên phiếu
+                                    string mappedType = "Chưa xác định";
+                                    if (!string.IsNullOrEmpty(t.name))
+                                    {
+                                        var match = defaultTitles.FirstOrDefault(
+                                            d => d.Title.Equals(t.name, StringComparison.OrdinalIgnoreCase));
+                                        if (match != null)
+                                        {
+                                            mappedType = isVtiTicket
+                                                ? (match.TypeIssueVTI ?? "Chưa xác định")
+                                                : (match.TypeIssueKhachLe ?? "Chưa xác định");
+                                            if (string.IsNullOrEmpty(mappedType)) mappedType = "Chưa xác định";
+                                        }
+                                    }
+
+                                    string newDesc = (t.description ?? "") + $"<br><br>[Type: {mappedType}]";
+                                    string realId = !string.IsNullOrEmpty(t._id) ? t._id : t.id;
+
+                                    var upd = new { id = realId, description = newDesc, current_type = 0 };
+                                    try
+                                    {
+                                        var r = await client.PutAsync(
+                                            "https://ticket-v2-stg.omicrm.com/ticket/update?lng=vi&utm_source=web",
+                                            new StringContent(JsonSerializer.Serialize(upd), Encoding.UTF8, "application/json"));
+                                        if (r.IsSuccessStatusCode) totalUpdated++;
+                                    }
+                                    catch { }
+                                }
+
+                                // Nếu trả về đúng 200 thì còn trang tiếp
+                                hasMore = items.Count == 200;
+                                page++;
+                            }
+
+                            lblProgress.Text = $"✅ {day:dd/MM} xong | Tổng cập nhật: {totalUpdated}";
+                            lblProgress.Refresh();
+                        }
+
+                        MessageBox.Show(
+                            $"Hoàn tất!\n📋 Đã quét: {totalScanned} phiếu\n✅ Đã cập nhật: {totalUpdated} phiếu thiếu Type Issue.",
+                            "Xong", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Lỗi khi chạy batch fix: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    btnBatchFix.Enabled = true;
+                    btnBatchFix.Text = "Fix TypeIssue Missing";
+                    Cursor.Current = Cursors.Default;
+                    lblProgress.Text = "";
+                }
+            };
+
+            adminPopup.Controls.AddRange(new Control[]
+            {
+                lblDateRange, lblFrom, dtStart, lblTo, dtEnd, lblProgress, btnBatchFix
+            });
             adminPopup.ShowDialog();
         }
+
+        private void ShowFixTypeIssueDialog()
+        {
+            Form dlg = new Form()
+            {
+                Text = "🔧 Gán Type Issue cho phiếu thiếu",
+                Width = 920,
+                Height = 600,
+                StartPosition = FormStartPosition.CenterScreen,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                FormBorderStyle = FormBorderStyle.FixedDialog
+            };
+
+            // ── Toolbar trên ──
+            Label lblFrom = new Label() { Text = "Từ ngày:", Left = 12, Top = 16, AutoSize = true };
+            DateTimePicker dtFrom = new DateTimePicker() { Left = 75, Top = 12, Width = 115, Format = DateTimePickerFormat.Short, Value = DateTime.Today };
+            Label lblTo = new Label() { Text = "đến:", Left = 198, Top = 16, AutoSize = true };
+            DateTimePicker dtTo = new DateTimePicker() { Left = 225, Top = 12, Width = 115, Format = DateTimePickerFormat.Short, Value = DateTime.Today };
+
+            Button btnFind = new Button()
+            {
+                Text = "🔍 Tìm phiếu thiếu",
+                Left = 350,
+                Top = 10,
+                Width = 155,
+                Height = 28,
+                BackColor = Color.SteelBlue,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold)
+            };
+
+            Label lblStatus = new Label()
+            {
+                Left = 12,
+                Top = 48,
+                Width = 875,
+                Height = 18,
+                Text = "← Chọn ngày rồi bấm Tìm kiếm",
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 8)
+            };
+
+            // ── Grid ──
+            DataGridView grid = new DataGridView()
+            {
+                Left = 10,
+                Top = 70,
+                Width = 880,
+                Height = 400,
+                ReadOnly = false,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                Font = new Font("Segoe UI", 8.5f),
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                RowHeadersVisible = false,
+                EditMode = DataGridViewEditMode.EditOnEnter
+            };
+
+            // ✅ Chặn DataError dialog — không để popup lỗi ComboBox nữa
+            grid.DataError += (s, e) => { e.Cancel = true; };
+
+            grid.Columns.Add(new DataGridViewCheckBoxColumn
+            { Name = "chk", HeaderText = "✔", Width = 38, FillWeight = 1 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn
+            { Name = "id", HeaderText = "ID", Width = 75, ReadOnly = true });
+            grid.Columns.Add(new DataGridViewTextBoxColumn
+            { Name = "date", HeaderText = "Ngày tạo", Width = 90, ReadOnly = true });
+            grid.Columns.Add(new DataGridViewTextBoxColumn
+            { Name = "title", HeaderText = "Tên phiếu", Width = 270, ReadOnly = true });
+            grid.Columns.Add(new DataGridViewTextBoxColumn
+            { Name = "tag", HeaderText = "Tag", Width = 130, ReadOnly = true });
+
+            // ✅ Cột combo — thêm "Chưa xác định" TRƯỚC, rồi mới thêm các type
+            var typeCol = new DataGridViewComboBoxColumn
+            {
+                Name = "type",
+                HeaderText = "Type Issue sẽ gán",
+                Width = 220,
+                FlatStyle = FlatStyle.Flat,
+                DisplayStyleForCurrentCellOnly = true
+            };
+            typeCol.Items.Add("Chưa xác định"); // ✅ Luôn có sẵn item mặc định
+            var typeOptions = defaultTypeIssues?
+                .Select(t => t.Text)
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Distinct()
+                .ToArray() ?? Array.Empty<string>();
+            foreach (var opt in typeOptions) typeCol.Items.Add(opt);
+
+            grid.Columns.Add(typeCol);
+
+            // ── Toolbar dưới ──
+            Button btnCheckAll = new Button()
+            {
+                Text = "☑ Chọn tất cả",
+                Left = 10,
+                Top = 478,
+                Width = 120,
+                Height = 28,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.WhiteSmoke
+            };
+            Button btnUncheckAll = new Button()
+            {
+                Text = "☐ Bỏ chọn",
+                Left = 138,
+                Top = 478,
+                Width = 100,
+                Height = 28,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.WhiteSmoke
+            };
+            Button btnFix = new Button()
+            {
+                Text = "✅ Gán Type Issue cho các phiếu đã chọn",
+                Left = 430,
+                Top = 474,
+                Width = 295,
+                Height = 36,
+                BackColor = Color.SeaGreen,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold)
+            };
+            Label lblResult = new Label()
+            {
+                Left = 10,
+                Top = 518,
+                Width = 875,
+                Height = 20,
+                Text = "",
+                ForeColor = Color.DarkGreen,
+                Font = new Font("Segoe UI", 8)
+            };
+
+            dlg.Controls.AddRange(new Control[]
+                { lblFrom, dtFrom, lblTo, dtTo, btnFind, lblStatus,
+          grid, btnCheckAll, btnUncheckAll, btnFix, lblResult });
+
+            // ── Dữ liệu tạm ──
+            var foundTickets = new List<TicketItem>();
+
+            // ✅ Helper: tìm giá trị an toàn trong Items
+            string SafeType(string mapped)
+            {
+                if (typeCol.Items.Contains(mapped)) return mapped;
+                // Tìm gần đúng nếu không khớp 100%
+                foreach (var item in typeCol.Items)
+                    if (item?.ToString()?.IndexOf(mapped, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return item.ToString();
+                return "Chưa xác định";
+            }
+
+            btnCheckAll.Click += (s, e) => { foreach (DataGridViewRow r in grid.Rows) r.Cells["chk"].Value = true; };
+            btnUncheckAll.Click += (s, e) => { foreach (DataGridViewRow r in grid.Rows) r.Cells["chk"].Value = false; };
+
+            // ── TÌM KIẾM ──
+            btnFind.Click += async (s, e) =>
+            {
+                if (dtFrom.Value.Date > dtTo.Value.Date)
+                {
+                    MessageBox.Show("Ngày bắt đầu không được lớn hơn ngày kết thúc.", "Lỗi",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                btnFind.Enabled = false; btnFind.Text = "Đang tìm...";
+                lblStatus.Text = "⏳ Đang tải danh sách phiếu...";
+                lblStatus.ForeColor = Color.DarkBlue;
+                grid.Rows.Clear();
+                foundTickets.Clear();
+
+                var vtiTag = tagList.FirstOrDefault(t =>
+                    t.name.Equals("VTI", StringComparison.OrdinalIgnoreCase)) ??
+                    tagList.FirstOrDefault(t => t.name.ToUpper().Contains("VTI"));
+
+                var typeRx = new System.Text.RegularExpressions.Regex(@"\[Type:\s*.+?\]");
+
+                try
+                {
+                    using var client = new System.Net.Http.HttpClient();
+                    client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+
+                    for (DateTime day = dtFrom.Value.Date; day <= dtTo.Value.Date; day = day.AddDays(1))
+                    {
+                        long ms0 = new DateTimeOffset(day).ToUnixTimeMilliseconds();
+                        long ms1 = new DateTimeOffset(day.AddDays(1).AddTicks(-1)).ToUnixTimeMilliseconds();
+                        int page = 1; bool hasMore = true;
+
+                        lblStatus.Text = $"⏳ Đang tải ngày {day:dd/MM/yyyy}...";
+                        lblStatus.Refresh();
+
+                        while (hasMore)
+                        {
+                            var body = new Dictionary<string, object>
+                    {
+                        { "status_filters", new[] { "active_state" } },
+                        { "page", page }, { "size", 200 },
+                        { "current_status", new[] { 0,1,2,3,4 } },
+                        { "created_at_from", ms0 }, { "created_at_to", ms1 }
+                    };
+
+                            var resp = await client.PostAsync(
+                                "https://ticket-v2-stg.omicrm.com/ticket/search?lng=vi&utm_source=web",
+                                new System.Net.Http.StringContent(
+                                    JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"));
+
+                            if (!resp.IsSuccessStatusCode) { hasMore = false; break; }
+
+                            var parsed = JsonSerializer.Deserialize<OmiResponse>(
+                                await resp.Content.ReadAsStringAsync());
+                            var items = parsed?.payload?.items ?? new List<TicketItem>();
+                            if (items.Count == 0) { hasMore = false; break; }
+
+                            foreach (var t in items)
+                            {
+                                // Bỏ qua nếu đã có Type
+                                if (!string.IsNullOrEmpty(t.description) && typeRx.IsMatch(t.description))
+                                    continue;
+
+                                // Xác định VTI
+                                bool isVti = false; string tagName = "";
+                                if (t.tags != null)
+                                    foreach (var tg in t.tags)
+                                    {
+                                        string tid = tg.ValueKind == System.Text.Json.JsonValueKind.Object
+                                            && tg.TryGetProperty("id", out var ip)
+                                            ? ip.GetString() : tg.ToString();
+                                        var cur = tagList.FirstOrDefault(x => x.id == tid);
+                                        if (cur == null) continue;
+                                        tagName = cur.name;
+                                        if (cur.name.ToUpper().Contains("VTI") ||
+                                            cur.name.ToUpper().Contains("HLC") ||
+                                            (vtiTag != null && (cur.parent_id == vtiTag.id || cur.id == vtiTag.id)))
+                                            isVti = true;
+                                    }
+
+                                // Auto-map type
+                                string rawMapped = "Chưa xác định";
+                                var m = defaultTitles.FirstOrDefault(d =>
+                                    d.Title.Equals(t.name, StringComparison.OrdinalIgnoreCase));
+                                if (m != null)
+                                {
+                                    string candidate = isVti
+                                        ? (m.TypeIssueVTI ?? "")
+                                        : (m.TypeIssueKhachLe ?? "");
+                                    if (!string.IsNullOrEmpty(candidate)) rawMapped = candidate;
+                                }
+
+                                // ✅ Đảm bảo giá trị tồn tại trong danh sách Items
+                                string safeMapped = SafeType(rawMapped);
+
+                                foundTickets.Add(t);
+                                string dateStr = t.created_date > 0
+                                    ? DateTimeOffset.FromUnixTimeMilliseconds(t.created_date)
+                                        .ToLocalTime().ToString("dd/MM HH:mm")
+                                    : "";
+
+                                // ✅ Add row TRƯỚC, rồi set cell value SAU để tránh lỗi combo
+                                int ri = grid.Rows.Add();
+                                grid.Rows[ri].Cells["chk"].Value = true;
+                                grid.Rows[ri].Cells["id"].Value = t.unique_id ?? t._id ?? "";
+                                grid.Rows[ri].Cells["date"].Value = dateStr;
+                                grid.Rows[ri].Cells["title"].Value = t.name ?? "";
+                                grid.Rows[ri].Cells["tag"].Value = tagName;
+                                grid.Rows[ri].Cells["type"].Value = safeMapped;
+                                grid.Rows[ri].Tag = !string.IsNullOrEmpty(t._id) ? t._id : t.id;
+                            }
+
+                            hasMore = items.Count == 200; page++;
+                        }
+                    }
+
+                    lblStatus.Text = foundTickets.Count > 0
+                        ? $"✅ Tìm thấy {foundTickets.Count} phiếu thiếu Type — chỉnh cột Type nếu cần rồi bấm Gán."
+                        : "✅ Không có phiếu nào thiếu Type Issue trong khoảng ngày này.";
+                    lblStatus.ForeColor = foundTickets.Count > 0 ? Color.DarkBlue : Color.SeaGreen;
+                }
+                catch (Exception ex)
+                {
+                    lblStatus.Text = "❌ Lỗi: " + ex.Message;
+                    lblStatus.ForeColor = Color.Red;
+                }
+                finally { btnFind.Enabled = true; btnFind.Text = "🔍 Tìm phiếu thiếu"; }
+            };
+
+            // ── GÁN TYPE ──
+            btnFix.Click += async (s, e) =>
+            {
+                var toFix = grid.Rows.Cast<DataGridViewRow>()
+                    .Where(r => r.Cells["chk"].Value is true).ToList();
+
+                if (toFix.Count == 0)
+                {
+                    MessageBox.Show("Chưa tick chọn phiếu nào!", "Thông báo",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (MessageBox.Show(
+                    $"Sẽ gán Type Issue cho {toFix.Count} phiếu đã chọn. Tiếp tục?",
+                    "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                    return;
+
+                btnFix.Enabled = false;
+                int done = 0, fail = 0;
+
+                using var client = new System.Net.Http.HttpClient();
+                client.DefaultRequestHeaders.Add("Authorization", OMICRM_TOKEN);
+
+                foreach (var row in toFix)
+                {
+                    string realId = row.Tag?.ToString() ?? "";
+                    string typeVal = row.Cells["type"].Value?.ToString() ?? "Chưa xác định";
+                    var ticket = foundTickets.FirstOrDefault(t =>
+                        (!string.IsNullOrEmpty(t._id) ? t._id : t.id) == realId);
+                    if (ticket == null) continue;
+
+                    string newDesc = (ticket.description ?? "") + $"<br><br>[Type: {typeVal}]";
+
+                    try
+                    {
+                        var r = await client.PutAsync(
+                            "https://ticket-v2-stg.omicrm.com/ticket/update?lng=vi&utm_source=web",
+                            new System.Net.Http.StringContent(
+                                JsonSerializer.Serialize(new { id = realId, description = newDesc, current_type = 0 }),
+                                Encoding.UTF8, "application/json"));
+
+                        if (r.IsSuccessStatusCode)
+                        {
+                            done++;
+                            row.Cells["chk"].Value = false;
+                            row.DefaultCellStyle.BackColor = Color.FromArgb(220, 255, 220);
+                        }
+                        else fail++;
+                    }
+                    catch { fail++; }
+
+                    lblResult.Text = $"⏳ Đang xử lý... {done + fail}/{toFix.Count}";
+                    lblResult.Refresh();
+                }
+
+                lblResult.Text = $"✅ Xong: {done} thành công" + (fail > 0 ? $", ❌ {fail} lỗi." : ".");
+                btnFix.Enabled = true;
+            };
+
+            dlg.ShowDialog(this);
+        }
+
+        private void btnGanTypeIssue_Click(object sender, EventArgs e)
+        {
+            ShowFixTypeIssueDialog();
+        }
+
         // =========================================================================
         // 1. TỰ ĐỘNG VIỆT HÓA CỘT MỌI NƠI (KHÔNG BAO GIỜ BỊ LÒI TIẾNG ANH NỮA)
         // =========================================================================
@@ -4590,31 +5286,56 @@ namespace GhiIssue
         // =========================================================================
         // TÍNH NĂNG MỚI: GỬI BACKUP DỮ LIỆU LÊN GOOGLE SHEET CÁ NHÂN
         // =========================================================================
-        private async Task SendToGoogleSheetAsync(string id, string group, string titleVn, string mainType, string typeIssue, string location, string techAction, string ticketStatus, string timeIn, string timeOut, string priority)
+        private async Task SendToGoogleSheetAsync(string id, string group, string titleVn, string mainType, string typeIssue, string location, string techAction, string ticketStatus, string timeIn, string timeOut, string priority, string overrideTargetUrl = null)
         {
-            string targetUrl = string.IsNullOrEmpty(webhookReportUrl)
-                ? "https://script.google.com/macros/s/AKfycbw7p6NqXIY3Ukv3qjQVG9V1yFNvnvS_B8DeMd67y8_jKR8fSybPn1sMxcbn7nXQ3_TU/exec"
-                : webhookReportUrl;
+            // Determine target URL priority:
+            // 1. If overrideTargetUrl provided -> use it
+            // 2. Else if webhookReportUrlAll set -> use it (general webhook for ALL customers)
+            // 3. Else if webhookReportUrl set -> use legacy webhook
+            // 4. Else use default script URL
+            string defaultUrl = "https://script.google.com/macros/s/AKfycbw7p6NqXIY3Ukv3qjQVG9V1yFNvnvS_B8DeMd67y8_jKR8fSybPn1sMxcbn7nXQ3_TU/exec";
+            string targetUrl = overrideTargetUrl ?? (!string.IsNullOrEmpty(webhookReportUrlAll) ? webhookReportUrlAll : (!string.IsNullOrEmpty(webhookReportUrl) ? webhookReportUrl : defaultUrl));
+
+            var body = new
+            {
+                id = id,
+                group = group,
+                title_vn = titleVn,
+                main_type = mainType,
+                type_issue = typeIssue,
+                location = location,
+                tech_action = techAction,
+                status = ticketStatus,
+                time_in = timeIn,
+                time_out = timeOut,
+                priority = priority
+            };
+
+            string jsonPayload = JsonSerializer.Serialize(body);
+            try { WriteLog("WEBHOOK", "Payload prepared", jsonPayload.Length > 1200 ? jsonPayload.Substring(0, 1200) + "..." : jsonPayload); } catch { }
 
             using (HttpClient client = new HttpClient())
             {
-                var body = new
-                {
-                    id = id,
-                    group = group,
-                    title_vn = titleVn,
-                    main_type = mainType,
-                    type_issue = typeIssue,
-                    location = location,
-                    tech_action = techAction,
-                    status = ticketStatus,
-                    time_in = timeIn,
-                    time_out = timeOut,
-                    priority = priority
-                };
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-                try { await client.PostAsync(targetUrl, content); } catch { }
+                try
+                {
+                    // Pre-send log with target and key identifiers
+                    try { WriteLog("WEBHOOK", $"Sending to webhook", $"Target: {targetUrl} | Ticket: {id} | Tag/Loc: {location} | Type: {typeIssue}"); } catch { }
+
+                    HttpResponseMessage resp = await client.PostAsync(targetUrl, content);
+                    string respStr = "";
+                    try { respStr = await resp.Content.ReadAsStringAsync(); } catch { }
+
+                    // Truncate response for safety in logs
+                    string shortResp = respStr != null && respStr.Length > 800 ? respStr.Substring(0, 800) + "..." : respStr;
+                    try { WriteLog("WEBHOOK", $"Webhook result: {(int)resp.StatusCode} {resp.StatusCode}", shortResp); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    // Log exception details
+                    try { WriteLog("ERROR", "Webhook send failed", ex.Message); } catch { }
+                }
             }
         }
         // =========================================================================
@@ -5323,6 +6044,8 @@ namespace GhiIssue
         public string ThoiGianNhan { get; set; }
         public string ThoiGianXong { get; set; }
         public string NguoiNhan { get; set; }
+        // Ensure TypeIssue is never null/empty for reporting: map unknown to "Chưa xác định"
+        public string TypeIssueSafe => string.IsNullOrEmpty(TypeIssue) ? "Chưa xác định" : TypeIssue;
         
     }
 

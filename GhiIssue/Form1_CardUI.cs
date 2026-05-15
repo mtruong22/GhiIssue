@@ -36,10 +36,11 @@ namespace GhiIssue
         /// Thay bằng:
         ///     LoadDraftCards();
         /// </summary>
+        private System.Windows.Forms.Timer _cardChangeDebounce; // 🌟 THÊM field này lên đầu class Form1
+
         private void SetupCardUI()
         {
             // 1. Tạo CardGridPanel
-            //_cardPanel.Dock = DockStyle.Fill; // Cực kỳ quan trọng để Panel tự scale theo Form1
             _cardPanel = new CardGridPanel
             {
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
@@ -56,30 +57,29 @@ namespace GhiIssue
                 tagList, categoryList, defaultTitles, defaultTypeIssues, defaultTechActions,
                 employees, defaultCat, defaultSubCat, defaultAssigneeId);
 
-            // 4. Auto-save khi data thay đổi
-            // TỐI ƯU HÓA: Đẩy việc đếm thẻ và bù thẻ vào luồng chạy ngầm
+            // 4. ✅ DEBOUNCE: Tạo timer 1 lần, chỉ thực thi sau 300ms im lặng
+            //    Tránh UpdateStatusCount + EnsureMinCards chạy mỗi lần gõ phím
+            _cardChangeDebounce = new System.Windows.Forms.Timer { Interval = 300 };
+            _cardChangeDebounce.Tick += (s, e) =>
+            {
+                _cardChangeDebounce.Stop();
+                UpdateStatusCount();
+                _cardPanel.EnsureMinCards(0);
+            };
+
             _cardPanel.CardsChanged += (s, e) =>
             {
-                // Sử dụng BeginInvoke để không làm kẹt giao diện lúc người dùng đang gõ
-                this.BeginInvoke(new Action(() =>
-                {
-                    UpdateStatusCount();
-                    // 🌟 SỬA CHÍNH TẠI ĐÂY: Đổi EnsureMinCards(5) thành EnsureMinCards(0)
-                    _cardPanel.EnsureMinCards(0);
-                }));
+                _cardChangeDebounce.Stop();
+                _cardChangeDebounce.Start(); // Reset đếm ngược mỗi lần có thay đổi
             };
-            // BẮT SỰ KIỆN KHI BẤM NÚT "GỬI" TRÊN 1 THẺ BẤT KỲ
+
+            // 5. Bắt sự kiện nút Gửi trên từng thẻ
             _cardPanel.SingleSendRequested += async (s, targetCard) =>
             {
-                // Gọi hàm kiểm tra và gửi đúng 1 thẻ này đi (Tương tự logic của btnCreateTicket_CardClick)
                 await SendSingleCardAsync(targetCard);
             };
 
             LoadDraftCards();
-            // 5. Bỏ qua nút Thêm phiếu thủ công
-            // SetupAddCardButton(); 
-
-            // 6. Mồi sẵn 5 phiếu trống lúc mới bật phần mềm
             _cardPanel.EnsureMinCards(5);
         }
 
@@ -322,20 +322,33 @@ namespace GhiIssue
                         string empName = employees.FirstOrDefault(emp => emp.Id == empId)?.Name ?? empId;
                         WriteLog("SUCCESS", $"Tạo phiếu '{title}'", $"Tag: {tagName} | NXL: {empName} | ID: {ticketId}");
 
-                        // Push Google Sheet nếu VTI
+                        // ✅ CODE MỚI (đúng): webhook chung gửi trước, không phân biệt VTI hay không
                         bool isVtiPush = IsCardTagVTI(card, vtiTag);
-                        if (isVtiPush)
-                        {
-                            string sheetGroup = card.GroupName;
-                            string mainType = card.MainType;
-                            string tStatus = (!string.IsNullOrEmpty(start) && !string.IsNullOrEmpty(end)) ? "Đã Đóng (4)" : "Đang xử lý (1)";
 
-                            // 🌟 Dò tìm Priority dựa vào tên phiếu đã chọn
-                            var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
-                            string priority = matchedTitle?.Priority ?? "";
+                        string sheetGroup = card.GroupName;
+                        string mainType = card.MainType;
+                        string tStatus = (!string.IsNullOrEmpty(start) && !string.IsNullOrEmpty(end))
+                                          ? "Đã Đóng (4)" : "Đang xử lý (1)";
 
-                            _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType, type, tagName, desc, tStatus, start, end, priority);
-                        }
+                        var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                        string priority = matchedTitle?.Priority ?? "";
+                        string typeForPush = string.IsNullOrEmpty(type) ? "Chưa xác định" : type;
+                        string tagNameForReport = Form1.NormalizeTagForReport(tagName); // giống nút nhỏ
+
+                        // ✅ a) LUÔN gửi tới webhook chung — không cần là VTI
+                        string generalTarget = !string.IsNullOrEmpty(webhookReportUrlAll)
+                                                ? webhookReportUrlAll
+                                                : webhookReportUrl;
+                        if (!string.IsNullOrEmpty(generalTarget))
+                            _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType,
+                                                       typeForPush, tagNameForReport, desc,
+                                                       tStatus, start, end, priority, generalTarget);
+
+                        // ✅ b) Gửi THÊM tới VTI webhook nếu đúng là tag VTI
+                        if (isVtiPush && !string.IsNullOrEmpty(webhookReportUrlVTI))
+                            _ = SendToGoogleSheetAsync(ticketId, sheetGroup, title, mainType,
+                                                       typeForPush, tagNameForReport, desc,
+                                                       tStatus, start, end, priority, webhookReportUrlVTI);
                     }
                     else if (!response.IsSuccessStatusCode && res.StartsWith("<"))
                     {
@@ -479,11 +492,22 @@ namespace GhiIssue
                     var matchedTitle = defaultTitles.FirstOrDefault(t => t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
                     string priority = matchedTitle?.Priority ?? "";
 
-                    var vtiTag2 = tagList.FirstOrDefault(t => t.name.ToUpper().Contains("VTI"));
-                    if (IsCardTagVTI(card, vtiTag2))
+                    // Always send to general webhook if configured
+                    string generalTarget = !string.IsNullOrEmpty(Form1.webhookReportUrlAll) ? Form1.webhookReportUrlAll : Form1.webhookReportUrl;
+                    string tagForReport = Form1.NormalizeTagForReport(tagName);
+                    if (!string.IsNullOrEmpty(generalTarget))
+                    {
+                        try { WriteLog("WEBHOOK", "Card pre-send", $"Target: {generalTarget} | Ticket: {ticketId} | Tag: {tagForReport}"); } catch { }
                         _ = SendToGoogleSheetAsync(ticketId, card.GroupName, title, card.MainType,
-                                                   card.TypeIssueName, tagName, card.DescText,
-                                                   tStatus, card.StartTime, card.EndTime, priority);
+                                                   card.TypeIssueName, tagForReport, card.DescText,
+                                                   tStatus, card.StartTime, card.EndTime, priority, generalTarget);
+                    }
+
+                    var vtiTag2 = tagList.FirstOrDefault(t => t.name.ToUpper().Contains("VTI"));
+                    if (IsCardTagVTI(card, vtiTag2) && !string.IsNullOrEmpty(Form1.webhookReportUrlVTI))
+                        _ = SendToGoogleSheetAsync(ticketId, card.GroupName, title, card.MainType,
+                                                   card.TypeIssueName, tagForReport, card.DescText,
+                                                   tStatus, card.StartTime, card.EndTime, priority, Form1.webhookReportUrlVTI);
 
                     // Tự động tẩy trắng thẻ sau 1.5 giây
                     System.Threading.Tasks.Task.Delay(1500).ContinueWith(t => {

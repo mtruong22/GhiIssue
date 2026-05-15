@@ -47,6 +47,7 @@
             label1 = new Label();
             btnSearch = new Button();
             btnViewOpen = new Button();
+            btnGanTypeIssue = new Button();
             dgvTickets = new DataGridView();
             btnExecute = new Button();
             cboEmployees = new ComboBox();
@@ -208,6 +209,7 @@
             tabPage2.Controls.Add(label1);
             tabPage2.Controls.Add(btnSearch);
             tabPage2.Controls.Add(btnViewOpen);
+            tabPage2.Controls.Add(btnGanTypeIssue);
             tabPage2.Controls.Add(dgvTickets);
             tabPage2.Controls.Add(btnExecute);
             tabPage2.Controls.Add(cboEmployees);
@@ -224,7 +226,7 @@
             cbQuickTag.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             cbQuickTag.FlatStyle = FlatStyle.System;
             cbQuickTag.FormattingEnabled = true;
-            cbQuickTag.Location = new Point(994, 7);
+            cbQuickTag.Location = new Point(994, 3);
             cbQuickTag.Name = "cbQuickTag";
             cbQuickTag.Size = new Size(232, 23);
             cbQuickTag.TabIndex = 8;
@@ -235,7 +237,7 @@
             cbQuickGroup.DropDownWidth = 232;
             cbQuickGroup.FlatStyle = FlatStyle.System;
             cbQuickGroup.FormattingEnabled = true;
-            cbQuickGroup.Location = new Point(684, 7);
+            cbQuickGroup.Location = new Point(694, 3);
             cbQuickGroup.Name = "cbQuickGroup";
             cbQuickGroup.Size = new Size(224, 23);
             cbQuickGroup.TabIndex = 7;
@@ -245,7 +247,7 @@
             label2.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label2.AutoSize = true;
             label2.ForeColor = Color.Crimson;
-            label2.Location = new Point(914, 13);
+            label2.Location = new Point(914, 5);
             label2.Name = "label2";
             label2.Size = new Size(74, 15);
             label2.TabIndex = 6;
@@ -256,7 +258,7 @@
             label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.ForeColor = Color.Crimson;
-            label1.Location = new Point(589, 13);
+            label1.Location = new Point(599, 6);
             label1.Name = "label1";
             label1.Size = new Size(89, 15);
             label1.TabIndex = 5;
@@ -278,10 +280,26 @@
             btnViewOpen.FlatStyle = FlatStyle.Flat;
             btnViewOpen.Location = new Point(328, 3);
             btnViewOpen.Name = "btnViewOpen";
-            btnViewOpen.Size = new Size(139, 25);
+            btnViewOpen.Size = new Size(141, 25);
             btnViewOpen.TabIndex = 3;
             btnViewOpen.Text = "Xem phiếu đang mở";
             btnViewOpen.UseVisualStyleBackColor = true;
+            // 
+            // btnGanTypeIssue
+            // 
+            btnGanTypeIssue.BackColor = Color.FromArgb(255, 248, 220);
+            btnGanTypeIssue.Cursor = Cursors.Hand;
+            btnGanTypeIssue.FlatAppearance.BorderColor = Color.Goldenrod;
+            btnGanTypeIssue.FlatStyle = FlatStyle.Flat;
+            btnGanTypeIssue.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnGanTypeIssue.ForeColor = Color.DarkGoldenrod;
+            btnGanTypeIssue.Location = new Point(475, 3);
+            btnGanTypeIssue.Name = "btnGanTypeIssue";
+            btnGanTypeIssue.Size = new Size(117, 25);
+            btnGanTypeIssue.TabIndex = 10;
+            btnGanTypeIssue.Text = "🔧 Gán Type Issue";
+            btnGanTypeIssue.UseVisualStyleBackColor = false;
+            btnGanTypeIssue.Click += btnGanTypeIssue_Click;
             // 
             // dgvTickets
             // 
@@ -357,7 +375,7 @@
             Controls.Add(tabControl1);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "Ghi Issue - v6.3";
+            Text = "Ghi Issue - v6.5";
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCreateTickets).EndInit();
@@ -395,5 +413,6 @@
         private ComboBox cbQuickGroup;
         private Label label2;
         private Button btnAdmin;
+        private Button btnGanTypeIssue;
     }
 }
